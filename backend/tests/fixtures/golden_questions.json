@@ -1,0 +1,82 @@
+[
+  {
+    "id": null,
+    "grade_level": "phonics",
+    "question_type": "vocabulary",
+    "topic": "animals",
+    "difficulty": 1,
+    "question_text": "Which word means a small furry animal that says 'meow'?",
+    "choices": [
+      {"label": "A", "text": "dog"},
+      {"label": "B", "text": "cat"},
+      {"label": "C", "text": "bird"},
+      {"label": "D", "text": "fish"}
+    ],
+    "correct_answer": "B",
+    "explanation": "'cat'은 고양이를 뜻하며, 'meow'라고 웁니다.",
+    "passage": null
+  },
+  {
+    "id": null,
+    "grade_level": "elementary_low",
+    "question_type": "multiple_choice",
+    "topic": "colors",
+    "difficulty": 2,
+    "question_text": "Look at the sky on a clear sunny day. What color is the sky?",
+    "choices": [
+      {"label": "A", "text": "red"},
+      {"label": "B", "text": "green"},
+      {"label": "C", "text": "blue"},
+      {"label": "D", "text": "yellow"}
+    ],
+    "correct_answer": "C",
+    "explanation": "맑은 날 하늘은 파란색(blue)입니다.",
+    "passage": null
+  },
+  {
+    "id": null,
+    "grade_level": "elementary_mid",
+    "question_type": "fill_in_blank",
+    "topic": "daily_life",
+    "difficulty": 2,
+    "question_text": "Every morning, I ___ my teeth before going to school.",
+    "choices": null,
+    "correct_answer": "brush",
+    "explanation": "이를 닦다는 표현은 'brush one\\'s teeth'입니다. 주어가 I이므로 동사 원형 'brush'를 씁니다.",
+    "passage": null
+  },
+  {
+    "id": null,
+    "grade_level": "middle",
+    "question_type": "grammar",
+    "topic": "present_perfect",
+    "difficulty": 3,
+    "question_text": "Choose the sentence that correctly uses the present perfect tense.",
+    "choices": [
+      {"label": "A", "text": "She has went to Paris last year."},
+      {"label": "B", "text": "She have gone to Paris many times."},
+      {"label": "C", "text": "She has gone to Paris many times."},
+      {"label": "D", "text": "She had went to Paris before."}
+    ],
+    "correct_answer": "C",
+    "explanation": "현재완료 시제는 'have/has + 과거분사'로 구성됩니다. 3인칭 단수 'She'에는 'has'를 사용하고, 'go'의 과거분사는 'gone'입니다.",
+    "passage": null
+  },
+  {
+    "id": null,
+    "grade_level": "high",
+    "question_type": "reading_comprehension",
+    "topic": "environment",
+    "difficulty": 4,
+    "question_text": "According to the passage, what is the leading source of ocean plastic pollution?",
+    "choices": [
+      {"label": "A", "text": "Oil spills from large cargo ships"},
+      {"label": "B", "text": "Plastic debris carried by rivers from inland areas"},
+      {"label": "C", "text": "Industrial waste discharged directly into the sea"},
+      {"label": "D", "text": "Fishing nets abandoned by commercial fishing fleets"}
+    ],
+    "correct_answer": "B",
+    "explanation": "지문에 따르면 해양 플라스틱 오염의 주요 원인은 내륙에서 강을 통해 유입되는 플라스틱 쓰레기입니다.",
+    "passage": "Ocean plastic pollution has emerged as a critical environmental threat. Studies suggest that rivers act as major conduits, transporting plastic waste from inland communities directly into the sea. This river-borne debris accounts for a substantial portion of all marine plastic. Microplastics from this waste enter the food chain, affecting marine organisms and ultimately posing risks to human health."
+  }
+]

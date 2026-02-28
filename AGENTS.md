@@ -52,13 +52,18 @@
 - React 19 + Next.js 16 App Router 기반
 - 컴포넌트: 함수형 컴포넌트 + React hooks만 사용
 
-## FastAPI
+## FastAPI (2026 Conventions)
 
 - 비동기 핸들러 (`async def`) 기본 사용
-- Pydantic v2 모델로 request/response 스키마 정의
-- 라우터 분리: `backend/app/api/` 디렉토리 내 도메인별 라우터
-- 설정 관리: `pydantic-settings` + `.env` 파일
-- CORS, 에러 핸들러 등 미들웨어는 `backend/app/main.py`에서 설정
+- Pydantic v2 모델로 request/response 스키마 정의; `model_config = {"from_attributes": True}` for ORM models
+- 라우터 분리: `backend/app/api/` 디렉토리 내 도메인별 라우터 (auth, exams, questions)
+- 설정 관리: `pydantic-settings` v2 + `.env` 파일; 모든 환경 변수는 `Settings` 클래스에 정의
+- CORS origins는 `settings.cors_origins` (list[str])에서 로드 — main.py에 하드코딩 금지
+- `lifespan` 컨텍스트 매니저로 시작/종료 처리 (`on_startup`/`on_shutdown` 비권장)
+- 전역 예외 핸들러 (`@app.exception_handler(Exception)`) 로 미처리 500 오류를 로깅 후 구조화된 JSON 응답 반환
+- 로깅: `app/core/logging_config.py`의 `setup_logging(debug)` 호출; `logging.getLogger(__name__)` 사용
+- HTTP 상태코드: 생성=201, 삭제=204, 충돌=409, 미인증=401, 권한없음=403 적용
+- 의존성 주입: `Depends(get_db)` for DB 세션, `Depends(get_current_user)` for 인증
 
 ## Directory Structure
 

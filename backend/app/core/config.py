@@ -6,6 +6,7 @@ from pydantic_settings import BaseSettings
 class Settings(BaseSettings):
     app_name: str = "English Inspector API"
     debug: bool = True
+    cors_origins: list[str] = ["http://localhost:3000"]
 
     # LLM API Keys (DSPy/LiteLLM also reads from env vars directly)
     openai_api_key: str = ""
@@ -20,7 +21,7 @@ class Settings(BaseSettings):
     # DSPy settings
     best_of_n: int = 3  # Best-of-N sampling count
     max_retries: int = 2  # Retry on verification failure
-    quality_threshold: int = 6  # Minimum score to pass quality filter
+    quality_threshold: int = 3  # Minimum score to pass quality filter (1-5 scale)
 
     # Database
     database_url: str = "sqlite+aiosqlite:///./english_inspector.db"

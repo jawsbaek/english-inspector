@@ -9,10 +9,13 @@ Pipeline: Generate (GPT-5.2) → Verify (Claude 4.6) → Score (Claude 4.6) → 
 """
 
 import json
+import logging
 
 import dspy
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Signatures
@@ -50,8 +53,10 @@ class VerifyAnswer(dspy.Signature):
 
 
 class ScoreQuestion(dspy.Signature):
-    """Score an English exam question on multiple quality dimensions.
-    Be strict — only high-quality, error-free questions should score above 7."""
+    """Score an English exam question using specific rubric criteria.
+    Rate each dimension 1-5:
+    1=Poor (major errors/issues), 2=Below Average, 3=Acceptable (meets minimum bar),
+    4=Good (minor issues only), 5=Excellent (no issues)."""
 
     question_text: str = dspy.InputField(desc="The question text")
     choices: str = dspy.InputField(desc="Answer choices as JSON or 'null'")
@@ -59,11 +64,12 @@ class ScoreQuestion(dspy.Signature):
     grade_level: str = dspy.InputField(desc="Target grade level")
     difficulty: int = dspy.InputField(desc="Intended difficulty 1-5")
 
-    clarity_score: int = dspy.OutputField(desc="1-10: Is the question clearly worded and unambiguous?")
-    accuracy_score: int = dspy.OutputField(desc="1-10: Is the question factually and grammatically correct?")
-    difficulty_match: int = dspy.OutputField(desc="1-10: Does difficulty match the intended level?")
-    distractor_quality: int = dspy.OutputField(desc="1-10: Are wrong options plausible but clearly wrong? (10 if not MC)")
-    overall_score: int = dspy.OutputField(desc="1-10: Overall quality score")
+    clarity_score: int = dspy.OutputField(desc="1-5: Is the question clearly worded and unambiguous? 1=Very unclear, 3=Acceptable, 5=Crystal clear")
+    accuracy_score: int = dspy.OutputField(desc="1-5: Is the question factually and grammatically correct? 1=Major errors, 3=Acceptable, 5=Perfectly correct")
+    difficulty_match: int = dspy.OutputField(desc="1-5: Does difficulty match the intended level? 1=Completely mismatched, 3=Roughly aligned, 5=Perfect match")
+    distractor_quality: int = dspy.OutputField(desc="1-5: Are wrong options plausible but clearly wrong? 1=All trivially obvious, 3=Acceptable, 5=Excellent. Rate 5 if not MC.")
+    overall_score: int = dspy.OutputField(desc="1-5: Overall quality. 1=Reject, 2=Below average, 3=Acceptable, 4=Good, 5=Excellent")
+    verdict: str = dspy.OutputField(desc="PASS if overall_score >= 3 and no individual score is 1, else FAIL")
 
 
 # ---------------------------------------------------------------------------
@@ -162,7 +168,7 @@ class ExamPipeline(dspy.Module):
     4. Best-of-N ensures the best candidate is selected
     """
 
-    def __init__(self, best_of_n: int = 3, quality_threshold: int = 6):
+    def __init__(self, best_of_n: int = 3, quality_threshold: int = 3):
         super().__init__()
         self.generator = QuestionGeneratorModule()
         self.verifier = AnswerVerifierModule()
@@ -187,7 +193,8 @@ class ExamPipeline(dspy.Module):
                         type_instruction=type_instruction,
                     )
                     candidates.append(gen_result.question_json)
-                except Exception:
+                except Exception as e:
+                    logger.warning("Question generation attempt failed: %s", e)
                     continue
 
         if not candidates:
@@ -218,11 +225,12 @@ class ExamPipeline(dspy.Module):
                         # Correct the answer using verifier's finding
                         q["correct_answer"] = verify_result.correct_answer
                         q["explanation"] = verify_result.reasoning
-                except Exception:
-                    pass  # Continue without verification
+                except Exception as e:
+                    logger.warning("Answer verification failed for candidate: %s", e)
+                    q["verified"] = False
 
                 # Phase 3: Score quality
-                overall = 5
+                overall = 3
                 try:
                     score_result = self.scorer(
                         question_text=q.get("question_text", ""),
@@ -232,8 +240,9 @@ class ExamPipeline(dspy.Module):
                         difficulty=difficulty,
                     )
                     overall = int(score_result.overall_score)
-                except (Exception, ValueError):
-                    overall = 5
+                except (Exception, ValueError) as e:
+                    logger.warning("Quality scoring failed for candidate: %s", e)
+                    overall = 3
 
                 # Only accept questions above quality threshold
                 if overall >= self.quality_threshold and overall > best_score:
@@ -244,7 +253,7 @@ class ExamPipeline(dspy.Module):
         if best_question is None and candidates:
             try:
                 best_question = json.loads(candidates[0])
-                best_score = 4
+                best_score = 2
             except (json.JSONDecodeError, TypeError):
                 pass
 
@@ -259,33 +268,40 @@ class ExamPipeline(dspy.Module):
 # MIPROv2 Metric & Optimizer Setup
 # ---------------------------------------------------------------------------
 
-def question_quality_metric(example, prediction, trace=None) -> float:
-    """Metric for MIPROv2 optimization.
-    Evaluates if the generated question meets quality standards.
-    Returns 0.0-1.0 score."""
+def question_quality_metric(example, prediction, trace=None):
+    """Metric for MIPROv2/GEPA optimization.
+    Returns a dict with 'score' (0.0-1.0) and 'feedback' string.
+    MIPROv2 reads the 'score' key; GEPA also uses 'feedback' for reflective optimization."""
     if not prediction.best_question:
-        return 0.0
+        return {"score": 0.0, "feedback": "No question generated"}
 
     try:
         q = json.loads(prediction.best_question)
     except (json.JSONDecodeError, TypeError):
-        return 0.0
+        return {"score": 0.0, "feedback": "Invalid JSON output from pipeline"}
 
     score = 0.0
+    issues = []
 
     # Has required fields
     if q.get("question_text") and q.get("correct_answer"):
         score += 0.3
+    else:
+        issues.append("Missing required fields (question_text or correct_answer)")
 
     # Has explanation
     if q.get("explanation"):
         score += 0.1
+    else:
+        issues.append("Missing explanation field")
 
-    # Quality score from pipeline
+    # Quality score from pipeline (1-5 scale)
     pipeline_score = prediction.score or 0
-    score += (pipeline_score / 10.0) * 0.6
+    score += (pipeline_score / 5.0) * 0.6
 
-    return min(score, 1.0)
+    final_score = min(score, 1.0)
+    feedback = "; ".join(issues) if issues else "Question meets quality standards"
+    return {"score": final_score, "feedback": feedback}
 
 
 def create_mipro_optimizer(num_threads: int = 2) -> "MIPROv2":  # noqa: F821

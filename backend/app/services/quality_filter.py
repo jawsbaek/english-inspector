@@ -188,6 +188,17 @@ _DIFFICULTY_THRESHOLDS: dict[int, dict[str, Any]] = {
     5: {"min_words": 15, "max_words": 150, "min_avg_len": 4.5, "max_avg_len": 10.0},
 }
 
+# Flesch-Kincaid Grade Level ranges per difficulty (conservative bounds; FK is most
+# reliable for multi-sentence texts — these are wide to avoid false positives on
+# short single-sentence questions).
+_FK_THRESHOLDS: dict[int, dict[str, float]] = {
+    1: {"min_fk": -5.0, "max_fk":  8.0},
+    2: {"min_fk": -2.0, "max_fk": 10.0},
+    3: {"min_fk":  0.0, "max_fk": 14.0},
+    4: {"min_fk":  2.0, "max_fk": 16.0},
+    5: {"min_fk":  4.0, "max_fk": 20.0},
+}
+
 
 def _text_stats(text: str) -> tuple[int, float, int]:
     """Return (word_count, avg_word_length, sentence_count)."""
@@ -201,9 +212,26 @@ def _text_stats(text: str) -> tuple[int, float, int]:
 class DifficultyCalibrator:
     """Checks whether question complexity roughly matches the declared difficulty.
 
-    Uses word count and average word length as lightweight proxies for
-    vocabulary and grammar complexity.
+    Uses word count, average word length, and Flesch-Kincaid Grade Level as
+    lightweight proxies for vocabulary and grammar complexity.
     """
+
+    @staticmethod
+    def _count_syllables(word: str) -> int:
+        """Estimate syllable count using vowel-group heuristic."""
+        word = word.lower()
+        count = len(re.findall(r"[aeiouy]+", word))
+        if word.endswith("e") and count > 1:
+            count -= 1
+        return max(count, 1)
+
+    def _flesch_kincaid_grade(self, text: str) -> float:
+        """Compute Flesch-Kincaid Grade Level for the given text."""
+        sentences = len(re.findall(r"[.!?]+", text)) or 1
+        words = re.findall(r"\b[a-zA-Z]+\b", text)
+        word_count = len(words) or 1
+        syllables = sum(self._count_syllables(w) for w in words)
+        return 0.39 * (word_count / sentences) + 11.8 * (syllables / word_count) - 15.59
 
     def check(self, question: QuestionResponse) -> list[str]:
         difficulty = question.difficulty
@@ -241,6 +269,21 @@ class DifficultyCalibrator:
                 f"Vocabulary too complex for difficulty {difficulty}: "
                 f"avg word length {avg_len:.1f} (maximum {thresholds['max_avg_len']})"
             )
+
+        # Flesch-Kincaid Grade Level as additional readability signal
+        fk_grade = self._flesch_kincaid_grade(text)
+        fk_limits = _FK_THRESHOLDS.get(difficulty)
+        if fk_limits is not None:
+            if fk_grade < fk_limits["min_fk"]:
+                reasons.append(
+                    f"Readability too low for difficulty {difficulty}: "
+                    f"Flesch-Kincaid grade {fk_grade:.1f} (minimum {fk_limits['min_fk']})"
+                )
+            if fk_grade > fk_limits["max_fk"]:
+                reasons.append(
+                    f"Readability too high for difficulty {difficulty}: "
+                    f"Flesch-Kincaid grade {fk_grade:.1f} (maximum {fk_limits['max_fk']})"
+                )
 
         return reasons
 
