@@ -16,7 +16,7 @@ async function getJsPDF() {
 }
 
 // Wrap text to fit within a given width (in points), returns array of lines
-function wrapText(
+function _wrapText(
   text: string,
   maxWidth: number,
   doc: InstanceType<Awaited<ReturnType<typeof getJsPDF>>>
@@ -110,11 +110,7 @@ export async function exportExamToPDF(
   };
 
   // ── Helper: print a text block and advance y ─────────────────
-  const printBlock = (
-    lines: string[],
-    lineHeight: number,
-    x = marginL
-  ) => {
+  const _printBlock = (lines: string[], lineHeight: number, x = marginL) => {
     for (const line of lines) {
       ensureSpace(lineHeight);
       doc.text(line, x, y);
@@ -149,7 +145,7 @@ export async function exportExamToPDF(
   doc.setFontSize(9);
   doc.setTextColor(90, 90, 90);
   const gradeLabel = metadata.gradeLevel
-    ? GRADE_LABELS[metadata.gradeLevel as keyof typeof GRADE_LABELS] ?? ""
+    ? (GRADE_LABELS[metadata.gradeLevel as keyof typeof GRADE_LABELS] ?? "")
     : "";
   doc.text(`날짜: ${metadata.date}`, marginL, y);
   if (gradeLabel) doc.text(`학년: ${gradeLabel}`, pageW / 2, y, { align: "center" });
@@ -216,7 +212,9 @@ export async function exportExamToPDF(
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8);
     doc.setTextColor(140, 140, 140);
-    doc.text(`난이도 ${"●".repeat(q.difficulty)}${"○".repeat(5 - q.difficulty)}`, diffX, y, { align: "right" });
+    doc.text(`난이도 ${"●".repeat(q.difficulty)}${"○".repeat(5 - q.difficulty)}`, diffX, y, {
+      align: "right",
+    });
 
     y += 6;
 
@@ -432,7 +430,9 @@ export async function exportExamToPDF(
   }
 
   // ── Page numbers ────────────────────────────────────────────
-  const totalPages = (doc.internal as unknown as { getNumberOfPages: () => number }).getNumberOfPages();
+  const totalPages = (
+    doc.internal as unknown as { getNumberOfPages: () => number }
+  ).getNumberOfPages();
   for (let p = 1; p <= totalPages; p++) {
     doc.setPage(p);
     doc.setFont("helvetica", "normal");

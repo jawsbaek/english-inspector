@@ -16,7 +16,6 @@ from typing import Any
 from app.models.question import QuestionType
 from app.schemas.question import QuestionResponse
 
-
 # ---------------------------------------------------------------------------
 # Data structures
 # ---------------------------------------------------------------------------
@@ -151,7 +150,7 @@ class FormatValidator:
                     reasons.append(
                         f"correct_answer '{question.correct_answer}' is not a valid choice label (A/B/C/D)"
                     )
-                elif question.correct_answer.strip().upper() not in {l.upper() for l in labels}:
+                elif question.correct_answer.strip().upper() not in {lbl.upper() for lbl in labels}:
                     reasons.append(
                         f"correct_answer '{question.correct_answer}' does not match any choice label"
                     )
@@ -168,9 +167,10 @@ class FormatValidator:
             reasons.append(f"{qtype.value} should not have choices")
 
         # --- Reading comprehension must have a passage ---
-        if qtype == QuestionType.READING_COMPREHENSION:
-            if not question.passage or not question.passage.strip():
-                reasons.append("reading_comprehension requires a non-empty passage")
+        if qtype == QuestionType.READING_COMPREHENSION and (
+            not question.passage or not question.passage.strip()
+        ):
+            reasons.append("reading_comprehension requires a non-empty passage")
 
         return reasons
 

@@ -1,22 +1,22 @@
 "use client";
 
+import { Calendar, FileDown, FileText, Loader2, School } from "lucide-react";
 import { useState } from "react";
-import { FileDown, Loader2, Calendar, School, FileText } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
-  DialogTitle,
   DialogDescription,
   DialogFooter,
+  DialogHeader,
+  DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { Question, GradeLevel } from "@/types/question";
-import { GRADE_LABELS } from "@/types/question";
 import type { ExamMetadata } from "@/lib/pdf-export";
+import type { GradeLevel, Question } from "@/types/question";
+import { GRADE_LABELS } from "@/types/question";
 
 interface ExamExportDialogProps {
   questions: Question[];
@@ -134,9 +134,7 @@ export default function ExamExportDialog({
           <div className="flex items-center justify-between rounded-lg border px-4 py-3">
             <div className="space-y-0.5">
               <p className="text-sm font-medium">정답 포함</p>
-              <p className="text-xs text-muted-foreground">
-                정답과 해설을 시험지에 포함합니다
-              </p>
+              <p className="text-xs text-muted-foreground">정답과 해설을 시험지에 포함합니다</p>
             </div>
             <button
               type="button"
@@ -157,17 +155,16 @@ export default function ExamExportDialog({
 
           {/* Summary */}
           <div className="rounded-md bg-muted/50 px-4 py-3 text-xs text-muted-foreground">
-            <p>총 <span className="font-semibold text-foreground">{questions.length}문항</span>이 포함됩니다.</p>
+            <p>
+              총 <span className="font-semibold text-foreground">{questions.length}문항</span>이
+              포함됩니다.
+            </p>
             <p className="mt-0.5">정답 페이지는 항상 별도 페이지에 생성됩니다.</p>
           </div>
         </div>
 
         <DialogFooter className="gap-2">
-          <Button
-            variant="outline"
-            onClick={() => setOpen(false)}
-            disabled={isExporting}
-          >
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={isExporting}>
             취소
           </Button>
           <Button

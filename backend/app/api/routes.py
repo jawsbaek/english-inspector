@@ -25,7 +25,7 @@ async def generate(req: GenerateRequest, db: AsyncSession = Depends(get_db)):
             difficulty=req.difficulty,
         )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Generation failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Generation failed: {e}") from e
 
     # Auto-filter generated questions
     quality_filter = QualityFilter()
@@ -215,8 +215,8 @@ async def trigger_optimization(
     db: AsyncSession = Depends(get_db),
 ):
     """Trigger MIPROv2 optimization using high-quality verified questions as training data."""
-    from app.services.optimizer import build_training_example, optimize_pipeline
     from app.services.generator import GRADE_DESCRIPTIONS, QUESTION_TYPE_INSTRUCTIONS
+    from app.services.optimizer import build_training_example, optimize_pipeline
 
     # Collect high-scoring questions as training examples
     stmt = select(Question).where(Question.score >= req.min_score).limit(50)

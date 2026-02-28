@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+
+echo "→ Backend: ruff check..."
+cd "$REPO_ROOT/backend"
+uv run --extra dev ruff check app/ || { echo "✗ ruff failed"; exit 1; }
+
+echo "→ Frontend: biome check..."
+cd "$REPO_ROOT/frontend"
+bunx biome check src/ || { echo "✗ biome failed"; exit 1; }
+
+echo "→ Frontend: build..."
+bun run build || { echo "✗ build failed"; exit 1; }
+
+echo "✓ All pre-commit checks passed"

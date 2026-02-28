@@ -1,19 +1,19 @@
 "use client";
 
+import { Loader2, Save } from "lucide-react";
 import { useState } from "react";
-import { Save, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { createExam } from "@/lib/api";
-import type { Question, GradeLevel } from "@/types/question";
+import type { GradeLevel, Question } from "@/types/question";
 import { GRADE_LABELS } from "@/types/question";
 
 interface SaveExamDialogProps {
@@ -42,9 +42,7 @@ export default function SaveExamDialog({
     setError(null);
     setIsSaving(true);
     try {
-      const questionIds = questions
-        .map((q) => q.id)
-        .filter((id): id is number => id !== undefined);
+      const questionIds = questions.map((q) => q.id).filter((id): id is number => id !== undefined);
       await createExam({
         title: title.trim(),
         grade_level: gradeLevel ?? "middle",
@@ -58,9 +56,7 @@ export default function SaveExamDialog({
         setTitle("");
       }, 1200);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "저장에 실패했습니다."
-      );
+      setError(err instanceof Error ? err.message : "저장에 실패했습니다.");
     } finally {
       setIsSaving(false);
     }
@@ -109,17 +105,12 @@ export default function SaveExamDialog({
 
             <div className="rounded-md bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground space-y-0.5">
               <p>
-                문항 수:{" "}
-                <span className="font-semibold text-foreground">
-                  {questions.length}개
-                </span>
+                문항 수: <span className="font-semibold text-foreground">{questions.length}개</span>
               </p>
               {gradeLevel && (
                 <p>
                   학년 수준:{" "}
-                  <span className="font-semibold text-foreground">
-                    {GRADE_LABELS[gradeLevel]}
-                  </span>
+                  <span className="font-semibold text-foreground">{GRADE_LABELS[gradeLevel]}</span>
                 </p>
               )}
             </div>
@@ -139,16 +130,8 @@ export default function SaveExamDialog({
               >
                 취소
               </Button>
-              <Button
-                type="submit"
-                disabled={isSaving || !title.trim()}
-                className="min-w-[80px]"
-              >
-                {isSaving ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  "저장"
-                )}
+              <Button type="submit" disabled={isSaving || !title.trim()} className="min-w-[80px]">
+                {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : "저장"}
               </Button>
             </DialogFooter>
           </form>

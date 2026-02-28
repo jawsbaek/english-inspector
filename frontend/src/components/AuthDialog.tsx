@@ -1,17 +1,12 @@
 "use client";
 
-import { useState } from "react";
 import { Loader2, LogIn, UserPlus } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { login, register } from "@/lib/auth";
 import type { User } from "@/types/auth";
 
@@ -21,11 +16,7 @@ interface AuthDialogProps {
   onSuccess: (user: User) => void;
 }
 
-export default function AuthDialog({
-  open,
-  onOpenChange,
-  onSuccess,
-}: AuthDialogProps) {
+export default function AuthDialog({ open, onOpenChange, onSuccess }: AuthDialogProps) {
   const [tab, setTab] = useState<"login" | "register">("login");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

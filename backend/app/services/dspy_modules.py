@@ -14,7 +14,6 @@ import dspy
 
 from app.core.config import settings
 
-
 # ---------------------------------------------------------------------------
 # Signatures
 # ---------------------------------------------------------------------------
@@ -207,7 +206,6 @@ class ExamPipeline(dspy.Module):
                     continue
 
                 # Phase 2: Verify answer correctness
-                verified = False
                 try:
                     verify_result = self.verifier(
                         question_text=q.get("question_text", ""),
@@ -220,7 +218,6 @@ class ExamPipeline(dspy.Module):
                         # Correct the answer using verifier's finding
                         q["correct_answer"] = verify_result.correct_answer
                         q["explanation"] = verify_result.reasoning
-                    verified = True
                 except Exception:
                     pass  # Continue without verification
 
@@ -291,7 +288,7 @@ def question_quality_metric(example, prediction, trace=None) -> float:
     return min(score, 1.0)
 
 
-def create_mipro_optimizer(num_threads: int = 2) -> "MIPROv2":
+def create_mipro_optimizer(num_threads: int = 2) -> "MIPROv2":  # noqa: F821
     """Create a MIPROv2 optimizer for the ExamPipeline."""
     from dspy.teleprompt import MIPROv2
 

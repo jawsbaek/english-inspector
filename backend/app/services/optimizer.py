@@ -7,7 +7,6 @@ Workflow:
 4. Save optimized module for future use
 """
 
-import json
 import os
 from pathlib import Path
 

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import type { Question } from "@/types/question";
 import { QUESTION_TYPE_LABELS } from "@/types/question";
@@ -25,6 +25,8 @@ export default function QuestionCard({
 }: QuestionCardProps) {
   const [localShowAnswer, setLocalShowAnswer] = useState(showAnswer);
 
+  useEffect(() => setLocalShowAnswer(showAnswer), [showAnswer]);
+
   const toggleAnswer = () => {
     setLocalShowAnswer((prev) => !prev);
     onToggleAnswer?.();
@@ -36,9 +38,7 @@ export default function QuestionCard({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-lg font-bold">Q{index + 1}.</span>
-            <Badge variant="secondary">
-              {QUESTION_TYPE_LABELS[question.question_type]}
-            </Badge>
+            <Badge variant="secondary">{QUESTION_TYPE_LABELS[question.question_type]}</Badge>
             <Badge variant="outline">난이도 {question.difficulty}</Badge>
           </div>
           {onDelete && (
@@ -56,16 +56,12 @@ export default function QuestionCard({
       <CardContent className="space-y-3">
         {question.passage && (
           <div className="rounded-md bg-muted p-4 text-sm leading-relaxed">
-            <p className="mb-1 font-semibold text-muted-foreground">
-              [지문]
-            </p>
+            <p className="mb-1 font-semibold text-muted-foreground">[지문]</p>
             <p className="whitespace-pre-wrap">{question.passage}</p>
           </div>
         )}
 
-        <p className="text-base font-medium leading-relaxed">
-          {question.question_text}
-        </p>
+        <p className="text-base font-medium leading-relaxed">{question.question_text}</p>
 
         {question.choices && question.choices.length > 0 && (
           <div className="space-y-1.5 pl-2">
@@ -78,8 +74,7 @@ export default function QuestionCard({
                     : "bg-muted/50"
                 }`}
               >
-                <span className="font-medium">{choice.label}.</span>{" "}
-                {choice.text}
+                <span className="font-medium">{choice.label}.</span> {choice.text}
               </div>
             ))}
           </div>
@@ -96,16 +91,12 @@ export default function QuestionCard({
             <Separator />
             <div className="space-y-1.5 text-sm">
               <p>
-                <span className="font-semibold text-green-700 dark:text-green-400">
-                  정답:
-                </span>{" "}
+                <span className="font-semibold text-green-700 dark:text-green-400">정답:</span>{" "}
                 {question.correct_answer}
               </p>
               {question.explanation && (
                 <p>
-                  <span className="font-semibold text-blue-700 dark:text-blue-400">
-                    해설:
-                  </span>{" "}
+                  <span className="font-semibold text-blue-700 dark:text-blue-400">해설:</span>{" "}
                   {question.explanation}
                 </p>
               )}

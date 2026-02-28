@@ -21,11 +21,6 @@ class LoginRequest(BaseModel):
     password: str
 
 
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-
-
 class UserResponse(BaseModel):
     id: int
     email: str
@@ -35,7 +30,12 @@ class UserResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
-@router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+class AuthResponse(BaseModel):
+    token: str
+    user: UserResponse
+
+
+@router.post("/register", response_model=AuthResponse, status_code=status.HTTP_201_CREATED)
 async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == req.email))
     if result.scalar_one_or_none():
@@ -49,10 +49,11 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
     db.add(user)
     await db.commit()
     await db.refresh(user)
-    return user
+    token = create_access_token(user.id)
+    return AuthResponse(token=token, user=UserResponse.model_validate(user))
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login", response_model=AuthResponse)
 async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == req.email))
     user = result.scalar_one_or_none()
@@ -62,7 +63,7 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
             detail="Invalid email or password",
         )
     token = create_access_token(user.id)
-    return TokenResponse(access_token=token)
+    return AuthResponse(token=token, user=UserResponse.model_validate(user))
 
 
 @router.get("/me", response_model=UserResponse)

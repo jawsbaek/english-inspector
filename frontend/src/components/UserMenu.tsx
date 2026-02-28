@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { BookOpen, LogOut, User as UserIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { LogOut, BookOpen, User as UserIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useState } from "react";
 import AuthDialog from "@/components/AuthDialog";
+import { Button } from "@/components/ui/button";
 import { logout } from "@/lib/auth";
 import type { User } from "@/types/auth";
 
@@ -31,11 +31,7 @@ export default function UserMenu({ user, onUserChange }: UserMenuProps) {
           <UserIcon className="mr-1.5 h-3.5 w-3.5" />
           로그인
         </Button>
-        <AuthDialog
-          open={authOpen}
-          onOpenChange={setAuthOpen}
-          onSuccess={(u) => onUserChange(u)}
-        />
+        <AuthDialog open={authOpen} onOpenChange={setAuthOpen} onSuccess={(u) => onUserChange(u)} />
       </>
     );
   }
@@ -76,8 +72,7 @@ export default function UserMenu({ user, onUserChange }: UserMenuProps) {
                 router.push("/exams");
               }}
             >
-              <BookOpen className="h-3.5 w-3.5" />
-              내 시험지
+              <BookOpen className="h-3.5 w-3.5" />내 시험지
             </button>
             <button
               type="button"

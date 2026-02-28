@@ -1,17 +1,17 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { BookOpen, Calendar, ChevronLeft, Hash, Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, BookOpen, Calendar, Hash, ChevronLeft } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { useCallback, useEffect, useState } from "react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { listExams, deleteExam } from "@/lib/api";
+import { deleteExam, listExams } from "@/lib/api";
 import { isLoggedIn } from "@/lib/auth";
 import type { ExamSet } from "@/types/auth";
-import { GRADE_LABELS } from "@/types/question";
 import type { GradeLevel } from "@/types/question";
+import { GRADE_LABELS } from "@/types/question";
 
 export default function ExamsPage() {
   const router = useRouter();
@@ -27,9 +27,7 @@ export default function ExamsPage() {
       const data = await listExams();
       setExams(data);
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "시험지 목록을 불러오지 못했습니다."
-      );
+      setError(err instanceof Error ? err.message : "시험지 목록을 불러오지 못했습니다.");
     } finally {
       setIsLoading(false);
     }
@@ -50,9 +48,7 @@ export default function ExamsPage() {
       await deleteExam(id);
       setExams((prev) => prev.filter((e) => e.id !== id));
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "삭제에 실패했습니다."
-      );
+      setError(err instanceof Error ? err.message : "삭제에 실패했습니다.");
     } finally {
       setDeletingId(null);
     }
@@ -67,42 +63,28 @@ export default function ExamsPage() {
     });
   };
 
-  const gradeLabel = (level: string) =>
-    GRADE_LABELS[level as GradeLevel] ?? level;
+  const gradeLabel = (level: string) => GRADE_LABELS[level as GradeLevel] ?? level;
 
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b bg-card">
         <div className="container mx-auto flex items-center justify-between px-4 py-4">
           <div className="flex items-center gap-3">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => router.push("/")}
-              className="gap-1.5"
-            >
+            <Button variant="ghost" size="sm" onClick={() => router.push("/")} className="gap-1.5">
               <ChevronLeft className="h-4 w-4" />
               홈으로
             </Button>
             <Separator orientation="vertical" className="h-5" />
             <div>
               <h1 className="text-xl font-bold flex items-center gap-2">
-                <BookOpen className="h-5 w-5" />
-                내 시험지
+                <BookOpen className="h-5 w-5" />내 시험지
               </h1>
-              <p className="text-xs text-muted-foreground">
-                저장된 시험 문항 세트
-              </p>
+              <p className="text-xs text-muted-foreground">저장된 시험 문항 세트</p>
             </div>
           </div>
 
-          <Button
-            size="sm"
-            onClick={() => router.push("/")}
-            className="gap-1.5"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            새 시험지 만들기
+          <Button size="sm" onClick={() => router.push("/")} className="gap-1.5">
+            <Plus className="h-3.5 w-3.5" />새 시험지 만들기
           </Button>
         </div>
       </header>
@@ -127,9 +109,7 @@ export default function ExamsPage() {
           <div className="flex min-h-[300px] items-center justify-center rounded-lg border border-dashed">
             <div className="text-center space-y-3">
               <BookOpen className="mx-auto h-10 w-10 text-muted-foreground/50" />
-              <p className="font-medium text-muted-foreground">
-                저장된 시험지가 없습니다
-              </p>
+              <p className="font-medium text-muted-foreground">저장된 시험지가 없습니다</p>
               <Button size="sm" onClick={() => router.push("/")}>
                 <Plus className="mr-1.5 h-3.5 w-3.5" />
                 문항 생성하러 가기
@@ -141,10 +121,7 @@ export default function ExamsPage() {
         {!isLoading && exams.length > 0 && (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {exams.map((exam) => (
-              <Card
-                key={exam.id}
-                className="relative transition-shadow hover:shadow-md"
-              >
+              <Card key={exam.id} className="relative transition-shadow hover:shadow-md">
                 <CardHeader className="pb-2">
                   <div className="flex items-start justify-between gap-2">
                     <CardTitle className="text-base leading-snug line-clamp-2">

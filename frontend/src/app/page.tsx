@@ -1,20 +1,20 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { Save } from "lucide-react";
+import { useEffect, useState } from "react";
+import ExamExportDialog from "@/components/ExamExportDialog";
 import GenerateForm from "@/components/GenerateForm";
 import QuestionCard from "@/components/QuestionCard";
-import ExamExportDialog from "@/components/ExamExportDialog";
-import UserMenu from "@/components/UserMenu";
 import SaveExamDialog from "@/components/SaveExamDialog";
-import { Button } from "@/components/ui/button";
+import UserMenu from "@/components/UserMenu";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { generateQuestions, deleteQuestion } from "@/lib/api";
+import { deleteQuestion, generateQuestions } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
-import type { Question, GenerateRequest } from "@/types/question";
-import { GRADE_LABELS } from "@/types/question";
 import type { User } from "@/types/auth";
-import { Save } from "lucide-react";
+import type { GenerateRequest, Question } from "@/types/question";
+import { GRADE_LABELS } from "@/types/question";
 
 export default function Home() {
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -64,9 +64,7 @@ export default function Home() {
         <div className="container mx-auto flex items-center justify-between px-4 py-4">
           <div>
             <h1 className="text-2xl font-bold">English Inspector</h1>
-            <p className="text-sm text-muted-foreground">
-              영어 시험지 자동 생성 및 검수 시스템
-            </p>
+            <p className="text-sm text-muted-foreground">영어 시험지 자동 생성 및 검수 시스템</p>
           </div>
           <div className="flex items-center gap-3">
             <Badge variant="outline" className="text-xs hidden sm:flex">
@@ -94,18 +92,12 @@ export default function Home() {
               <>
                 <div className="flex items-center justify-between print:hidden">
                   <div className="flex items-center gap-3">
-                    <h2 className="text-lg font-semibold">
-                      생성된 문항 ({questions.length}개)
-                    </h2>
+                    <h2 className="text-lg font-semibold">생성된 문항 ({questions.length}개)</h2>
                     {lastRequest && (
-                      <Badge variant="secondary">
-                        {GRADE_LABELS[lastRequest.grade_level]}
-                      </Badge>
+                      <Badge variant="secondary">{GRADE_LABELS[lastRequest.grade_level]}</Badge>
                     )}
                     {examSetId && (
-                      <span className="text-xs text-muted-foreground">
-                        Set: {examSetId}
-                      </span>
+                      <span className="text-xs text-muted-foreground">Set: {examSetId}</span>
                     )}
                   </div>
                   <div className="flex gap-2">
@@ -117,11 +109,7 @@ export default function Home() {
                       {showAllAnswers ? "전체 정답 숨기기" : "전체 정답 보기"}
                     </Button>
                     {user && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setSaveDialogOpen(true)}
-                      >
+                      <Button variant="outline" size="sm" onClick={() => setSaveDialogOpen(true)}>
                         <Save className="mr-1.5 h-3.5 w-3.5" />
                         시험지 저장
                       </Button>
@@ -138,10 +126,8 @@ export default function Home() {
                 <div className="hidden print:block print:mb-6">
                   <h1 className="text-center text-xl font-bold">영어 시험</h1>
                   <p className="text-center text-sm text-gray-500">
-                    {lastRequest
-                      ? GRADE_LABELS[lastRequest.grade_level]
-                      : ""}{" "}
-                    | {questions.length}문항
+                    {lastRequest ? GRADE_LABELS[lastRequest.grade_level] : ""} | {questions.length}
+                    문항
                   </p>
                 </div>
 

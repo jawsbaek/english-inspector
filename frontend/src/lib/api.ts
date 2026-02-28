@@ -1,6 +1,6 @@
-import type { GenerateRequest, GenerateResponse, Question } from "@/types/question";
-import type { ExamSet } from "@/types/auth";
 import { authFetch, getToken } from "@/lib/auth";
+import type { ExamSet } from "@/types/auth";
+import type { GenerateRequest, GenerateResponse, Question } from "@/types/question";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -11,7 +11,7 @@ async function fetchAPI<T>(path: string, options?: RequestInit): Promise<T> {
     ...(options?.headers as Record<string, string>),
   };
   if (token) {
-    headers["Authorization"] = `Bearer ${token}`;
+    headers.Authorization = `Bearer ${token}`;
   }
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
   if (!res.ok) {
@@ -21,9 +21,7 @@ async function fetchAPI<T>(path: string, options?: RequestInit): Promise<T> {
   return res.json();
 }
 
-export async function generateQuestions(
-  req: GenerateRequest
-): Promise<GenerateResponse> {
+export async function generateQuestions(req: GenerateRequest): Promise<GenerateResponse> {
   return fetchAPI<GenerateResponse>("/api/generate", {
     method: "POST",
     body: JSON.stringify(req),

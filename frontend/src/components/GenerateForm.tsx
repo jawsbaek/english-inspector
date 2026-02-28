@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -12,12 +13,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
-import type {
-  GradeLevel,
-  QuestionType,
-  GenerateRequest,
-} from "@/types/question";
+import type { GenerateRequest, GradeLevel, QuestionType } from "@/types/question";
 import { GRADE_LABELS, QUESTION_TYPE_LABELS } from "@/types/question";
 
 interface GenerateFormProps {
@@ -25,14 +21,9 @@ interface GenerateFormProps {
   isLoading: boolean;
 }
 
-export default function GenerateForm({
-  onGenerate,
-  isLoading,
-}: GenerateFormProps) {
+export default function GenerateForm({ onGenerate, isLoading }: GenerateFormProps) {
   const [gradeLevel, setGradeLevel] = useState<GradeLevel>("middle");
-  const [selectedTypes, setSelectedTypes] = useState<QuestionType[]>([
-    "multiple_choice",
-  ]);
+  const [selectedTypes, setSelectedTypes] = useState<QuestionType[]>(["multiple_choice"]);
   const [topic, setTopic] = useState("general");
   const [count, setCount] = useState(5);
   const [difficulty, setDifficulty] = useState(3);
@@ -67,10 +58,7 @@ export default function GenerateForm({
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="space-y-2">
             <Label>학년 수준</Label>
-            <Select
-              value={gradeLevel}
-              onValueChange={(v) => setGradeLevel(v as GradeLevel)}
-            >
+            <Select value={gradeLevel} onValueChange={(v) => setGradeLevel(v as GradeLevel)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -90,11 +78,7 @@ export default function GenerateForm({
               {Object.entries(QUESTION_TYPE_LABELS).map(([value, label]) => (
                 <Badge
                   key={value}
-                  variant={
-                    selectedTypes.includes(value as QuestionType)
-                      ? "default"
-                      : "outline"
-                  }
+                  variant={selectedTypes.includes(value as QuestionType) ? "default" : "outline"}
                   className="cursor-pointer select-none"
                   onClick={() => toggleType(value as QuestionType)}
                 >
@@ -128,10 +112,7 @@ export default function GenerateForm({
             </div>
             <div className="space-y-2">
               <Label>난이도</Label>
-              <Select
-                value={String(difficulty)}
-                onValueChange={(v) => setDifficulty(Number(v))}
-              >
+              <Select value={String(difficulty)} onValueChange={(v) => setDifficulty(Number(v))}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>

@@ -1,5 +1,5 @@
 import datetime
-import enum
+from enum import StrEnum
 
 from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -7,7 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.question import Base
 
 
-class UserRole(str, enum.Enum):
+class UserRole(StrEnum):
     TEACHER = "teacher"
     ADMIN = "admin"
 
