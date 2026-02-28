@@ -1,7 +1,7 @@
 import datetime
 import enum
 
-from sqlalchemy import DateTime, Enum, Float, Integer, String, Text, func
+from sqlalchemy import DateTime, Enum, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -43,6 +43,7 @@ class Question(Base):
     score: Mapped[float] = mapped_column(Float, default=0.0)  # Quality score
     validation_status: Mapped[str | None] = mapped_column(String(50), nullable=True)  # Filter result
     exam_set_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    user_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime, server_default=func.now()
     )

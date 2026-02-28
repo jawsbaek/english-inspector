@@ -3,9 +3,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.auth_routes import router as auth_router
+from app.api.exam_routes import router as exam_router
 from app.api.routes import router
 from app.core.database import engine
 from app.models.question import Base
+import app.models.user  # noqa: F401 — registers User/ExamSet with Base.metadata
 
 
 @asynccontextmanager
@@ -26,6 +29,8 @@ app.add_middleware(
 )
 
 app.include_router(router)
+app.include_router(auth_router)
+app.include_router(exam_router)
 
 
 @app.get("/health")

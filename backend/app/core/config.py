@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "sqlite+aiosqlite:///./english_inspector.db"
 
+    # JWT
+    jwt_secret_key: str = "change-me-in-production"
+    jwt_algorithm: str = "HS256"
+    jwt_expire_minutes: int = 480
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
     def configure_env(self):
