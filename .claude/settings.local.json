@@ -1,0 +1,8 @@
+{
+  "enabledMcpjsonServers": [
+    "context7",
+    "exa",
+    "github"
+  ],
+  "enableAllProjectMcpServers": true
+}

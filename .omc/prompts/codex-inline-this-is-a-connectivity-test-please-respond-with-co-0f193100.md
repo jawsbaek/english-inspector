@@ -1,0 +1,1 @@
+This is a connectivity test. Please respond with: "Codex MCP connection successful." and include which model you are running on.

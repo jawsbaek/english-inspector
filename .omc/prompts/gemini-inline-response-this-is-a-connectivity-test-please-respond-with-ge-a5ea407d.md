@@ -1,0 +1,1 @@
+Gemini MCP connection successful. I am running on the Gemini 2.5 Pro model.

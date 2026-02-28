@@ -1,0 +1,7 @@
+{
+  "tool_name": "mcp__plugin_oh-my-claudecode_x__ask_codex",
+  "tool_input_preview": "{\"agent_role\":\"architect\",\"prompt\":\"This is a connectivity test. Please respond with: \\\"Codex MCP connection successful.\\\" and include which model you are running on.\"}",
+  "error": "**Agent Role:** architect\n**Prompt File:** /Users/User/Documents/1hour/english-inspector/.omc/prompts/codex-prompt-this-is-a-connectivity-test-please-respond-with-co-d351941e.md\n**Response File:** /Users/User/Documents/1hour/english-inspector/.omc/prompts/codex-response-this-is-a-connectivity-test-please-respond-with-co-d351941e.md\n**Resolved Working Directory:** /Users/User/Documents/1hour/english-inspector\n**Path Policy:** strict\n\n---\n\nCodex CLI error: Codex exited with code 1: Not inside a tr...",
+  "timestamp": "2026-02-28T04:21:33.047Z",
+  "retry_count": 1
+}
