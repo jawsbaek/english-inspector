@@ -242,8 +242,8 @@ class ExamPipeline(dspy.Module):
         If the reward exceeds the threshold, the candidate is accepted immediately.
         Otherwise, Refine retries with feedback about why the candidate failed.
 
-        Includes both verification and scoring so that wrong-answer candidates
-        are penalized and Refine retries with feedback rather than accepting them.
+        Caches verify/score results on the prediction object so that forward()
+        can reuse them instead of making redundant LLM calls.
         """
         result = prediction.result
         if not result or not result.question_text or not result.correct_answer:
@@ -261,6 +261,9 @@ class ExamPipeline(dspy.Module):
                     passage=result.passage,
                     provided_answer=result.correct_answer,
                 )
+                # Cache on prediction for reuse in forward()
+                prediction._verify_result = verify_result
+
                 if not verify_result.is_correct:
                     logger.info(
                         "Reward: answer incorrect ('%s' -> '%s'), penalizing candidate",
@@ -278,6 +281,8 @@ class ExamPipeline(dspy.Module):
                     grade_level=str(getattr(example, "grade_level", "")),
                     difficulty=int(getattr(example, "difficulty", 3)),
                 )
+                prediction._score_result = score_result
+
                 return int(score_result.overall_score) / 5.0
         except Exception as e:
             logger.warning("Reward evaluation failed: %s", e)
@@ -323,55 +328,65 @@ class ExamPipeline(dspy.Module):
         if not question or not question.question_text:
             return dspy.Prediction(best_question=None, score=0, verified=False)
 
-        # Phase 2: Verify + score for ALL paths
-        # Even the Refine path needs final verification because Refine may
-        # return a low-reward candidate (e.g. wrong answer) when all attempts
-        # fail to meet the threshold. The reward function penalizes but does
-        # not correct answers, so we must do that here.
+        # Phase 2: Verify + score
+        # Reuse cached results from reward function when available (Refine path),
+        # otherwise call verifier/scorer directly (fallback path).
+        cached_verify = getattr(gen_result, "_verify_result", None)
+        cached_score = getattr(gen_result, "_score_result", None)
+
         verified = False
         overall = self.quality_threshold
 
-        eval_lm = get_evaluation_lm()
-        choices_str = _choices_to_str(question.choices)
-
-        try:
-            with dspy.context(lm=eval_lm):
-                verify_result = self.verifier(
-                    question_text=question.question_text,
-                    choices=choices_str,
-                    passage=question.passage,
-                    provided_answer=question.correct_answer,
-                )
-                if not verify_result.is_correct:
-                    logger.info(
-                        "Answer corrected: '%s' -> '%s'",
-                        question.correct_answer,
-                        verify_result.correct_answer,
-                    )
-                    question = question.model_copy(
-                        update={
-                            "correct_answer": verify_result.correct_answer,
-                            "explanation": verify_result.reasoning,
-                        }
-                    )
-                verified = True
-        except Exception as e:
-            logger.warning("Answer verification failed: %s", e)
-
-        try:
+        if cached_verify:
+            verify_result = cached_verify
+        else:
+            eval_lm = get_evaluation_lm()
             choices_str = _choices_to_str(question.choices)
-            with dspy.context(lm=eval_lm):
-                score_result = self.scorer(
-                    question_text=question.question_text,
-                    choices=choices_str,
-                    correct_answer=question.correct_answer,
-                    passage=question.passage,
-                    grade_level=grade_level,
-                    difficulty=difficulty,
+            try:
+                with dspy.context(lm=eval_lm):
+                    verify_result = self.verifier(
+                        question_text=question.question_text,
+                        choices=choices_str,
+                        passage=question.passage,
+                        provided_answer=question.correct_answer,
+                    )
+            except Exception as e:
+                logger.warning("Answer verification failed: %s", e)
+                verify_result = None
+
+        if verify_result:
+            if not verify_result.is_correct:
+                logger.info(
+                    "Answer corrected: '%s' -> '%s'",
+                    question.correct_answer,
+                    verify_result.correct_answer,
                 )
-                overall = int(score_result.overall_score)
-        except Exception as e:
-            logger.warning("Quality scoring failed: %s", e)
+                question = question.model_copy(
+                    update={
+                        "correct_answer": verify_result.correct_answer,
+                        "explanation": verify_result.reasoning,
+                    }
+                )
+            verified = True
+
+        if cached_score:
+            overall = int(cached_score.overall_score)
+        else:
+            eval_lm = get_evaluation_lm()
+            choices_str = _choices_to_str(question.choices)
+            try:
+                with dspy.context(lm=eval_lm):
+                    score_result = self.scorer(
+                        question_text=question.question_text,
+                        choices=choices_str,
+                        correct_answer=question.correct_answer,
+                        passage=question.passage,
+                        grade_level=grade_level,
+                        difficulty=difficulty,
+                    )
+                    overall = int(score_result.overall_score)
+            except Exception as e:
+                logger.warning("Quality scoring failed: %s", e)
 
         # Reject questions that don't meet the quality threshold
         if overall < self.quality_threshold:

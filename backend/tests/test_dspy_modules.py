@@ -266,26 +266,23 @@ class TestExamPipelineForward:
             type_instruction="Generate a 4-choice MC question.",
         )
 
-    @patch("app.services.dspy_modules.get_evaluation_lm")
     @patch("app.services.dspy_modules.get_generation_lm")
-    def test_refine_success_path(self, mock_get_lm, mock_get_eval_lm):
+    def test_refine_success_path(self, mock_get_lm):
         mock_get_lm.return_value = MagicMock()
-        mock_get_eval_lm.return_value = MagicMock()
         question = _sample_question()
 
-        mock_refine_result = MagicMock()
-        mock_refine_result.result = question
-        self.pipeline.refine = MagicMock(return_value=mock_refine_result)
-
-        # Mock verifier: answer is correct
+        # Simulate cached results from reward function
         mock_verify = MagicMock()
         mock_verify.is_correct = True
-        self.pipeline.verifier = MagicMock(return_value=mock_verify)
 
-        # Mock scorer: overall_score = 4
         mock_score = MagicMock()
         mock_score.overall_score = 4
-        self.pipeline.scorer = MagicMock(return_value=mock_score)
+
+        mock_refine_result = MagicMock(spec=[])
+        mock_refine_result.result = question
+        mock_refine_result._verify_result = mock_verify
+        mock_refine_result._score_result = mock_score
+        self.pipeline.refine = MagicMock(return_value=mock_refine_result)
 
         with patch("dspy.context"):
             result = self.pipeline.forward(**self.kwargs)
@@ -319,9 +316,9 @@ class TestExamPipelineForward:
         # Refine raises
         self.pipeline.refine = MagicMock(side_effect=RuntimeError("Refine failed"))
 
-        # Fallback generator returns valid question
+        # Fallback generator returns valid question (no cached results)
         question = _sample_question()
-        mock_gen_result = MagicMock()
+        mock_gen_result = MagicMock(spec=[])
         mock_gen_result.result = question
         self.pipeline.generator = MagicMock(return_value=mock_gen_result)
 
@@ -369,7 +366,7 @@ class TestExamPipelineForward:
         self.pipeline.refine = MagicMock(side_effect=RuntimeError("Refine failed"))
 
         question = _sample_question(correct_answer="B")
-        mock_gen_result = MagicMock()
+        mock_gen_result = MagicMock(spec=[])
         mock_gen_result.result = question
         self.pipeline.generator = MagicMock(return_value=mock_gen_result)
 
