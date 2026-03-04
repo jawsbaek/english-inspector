@@ -1,31 +1,64 @@
-"""DSPy 3.0+ Signatures and Modules for English exam question generation.
+"""DSPy 3.1+ Signatures and Modules for English exam question generation.
 
 Pipeline: Generate (GPT-5.2) → Verify (Claude 4.6) → Score (Claude 4.6) → Filter
 - GenerateQuestion: produces candidate questions via ChainOfThought
 - VerifyAnswer: cross-checks that the correct_answer is truly correct (different model)
 - ScoreQuestion: rates quality on multiple dimensions
-- Best-of-N: generates N candidates, picks highest scored
+- dspy.Refine: generates N candidates with feedback-based refinement, picks highest scored
 - MIPROv2: continuous prompt optimization from verified examples
+
+Key design decisions (see docs/ALGORITHM-REVIEW.md):
+- Pydantic output model + dspy.JSONAdapter → guaranteed valid structured output
+- dspy.Refine → feedback-aware retry replaces blind Best-of-N for loop
+- Layered error handling → no silent failures; fallback model on pipeline errors
 """
 
 import json
 import logging
 
 import dspy
+import pydantic
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# Pydantic Models for Structured Output (used with dspy.JSONAdapter)
+# ---------------------------------------------------------------------------
+
+
+class ChoiceItemOutput(pydantic.BaseModel):
+    """A single answer choice for multiple-choice questions."""
+
+    label: str  # "A", "B", "C", "D"
+    text: str
+
+
+class ExamQuestionOutput(pydantic.BaseModel):
+    """Structured output for a generated exam question.
+
+    Used as the output type for GenerateQuestion signature.
+    dspy.JSONAdapter automatically validates LLM output against this schema.
+    """
+
+    question_text: str
+    choices: list[ChoiceItemOutput] | None = None
+    correct_answer: str
+    explanation: str = ""  # Korean explanation
+    passage: str | None = None
+
+
+# ---------------------------------------------------------------------------
 # Signatures
 # ---------------------------------------------------------------------------
+
 
 class GenerateQuestion(dspy.Signature):
     """You are an expert English teacher creating exam questions for Korean students.
     Generate ONE high-quality English exam question that is appropriate for the
     specified grade level, type, and difficulty. The question must be factually
-    and grammatically perfect. Output ONLY a valid JSON object."""
+    and grammatically perfect."""
 
     grade_level: str = dspy.InputField(desc="Target grade level (e.g. 'middle', 'high')")
     question_type: str = dspy.InputField(desc="Type: multiple_choice, fill_in_blank, reading_comprehension, grammar, vocabulary, short_answer")
@@ -34,7 +67,7 @@ class GenerateQuestion(dspy.Signature):
     grade_description: str = dspy.InputField(desc="Detailed description of what this grade level covers")
     type_instruction: str = dspy.InputField(desc="Specific formatting instructions for this question type")
 
-    question_json: str = dspy.OutputField(desc='A single question as JSON: {"question_text":"...","choices":[{"label":"A","text":"..."},...]|null,"correct_answer":"...","explanation":"Korean explanation","passage":"..."|null}')
+    result: ExamQuestionOutput = dspy.OutputField(desc="The generated exam question with all required fields")
 
 
 class VerifyAnswer(dspy.Signature):
@@ -98,6 +131,16 @@ def get_evaluation_lm() -> dspy.LM:
     )
 
 
+def get_fallback_lm() -> dspy.LM:
+    """Fallback model used when primary generation pipeline fails.
+    Typically a different provider to avoid correlated outages."""
+    return dspy.LM(
+        model=settings.fallback_model,
+        temperature=0.3,
+        max_tokens=4000,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Modules
 # ---------------------------------------------------------------------------
@@ -154,18 +197,25 @@ class QuestionScorerModule(dspy.Module):
         )
 
 
+def _choices_to_str(choices: list[ChoiceItemOutput] | None) -> str:
+    """Convert choices list to JSON string for verifier/scorer input."""
+    if not choices:
+        return "null"
+    return json.dumps([c.model_dump() for c in choices], ensure_ascii=False)
+
+
 class ExamPipeline(dspy.Module):
     """Full pipeline: Generate (GPT-5.2) → Verify (Claude 4.6) → Score (Claude 4.6).
 
-    Uses Best-of-N sampling: generates N candidates per question,
-    switches to evaluation model for verification and scoring,
-    picks the highest-scored verified candidate.
+    Uses dspy.Refine for generation: generates up to N candidates with
+    feedback-based refinement. Each candidate is evaluated by a reward function
+    that scores quality. Failed attempts feed back context to improve subsequent
+    generations.
 
-    Error minimization strategy:
-    1. ChainOfThought generation forces step-by-step reasoning
-    2. Independent model verification catches answer errors
-    3. Multi-dimensional scoring filters low-quality questions
-    4. Best-of-N ensures the best candidate is selected
+    Error handling strategy:
+    1. dspy.Refine handles retry with feedback on format/quality issues
+    2. Fallback model used when primary generation pipeline fails entirely
+    3. Verification and scoring failures are logged and flagged (never silently ignored)
     """
 
     def __init__(self, best_of_n: int = 3, quality_threshold: int = 3):
@@ -175,15 +225,60 @@ class ExamPipeline(dspy.Module):
         self.scorer = QuestionScorerModule()
         self.best_of_n = best_of_n
         self.quality_threshold = quality_threshold
+        self.refine = dspy.Refine(
+            module=self.generator,
+            N=best_of_n,
+            reward_fn=self._quality_reward,
+            threshold=quality_threshold / 5.0,
+            fail_count=1,
+        )
+
+    def _quality_reward(self, example, prediction, trace=None):
+        """Reward function for dspy.Refine — evaluates each candidate's quality.
+
+        Called by Refine after each generation attempt. Returns a float 0.0-1.0.
+        If the reward exceeds the threshold, the candidate is accepted immediately.
+        Otherwise, Refine retries with feedback about why the candidate failed.
+        """
+        result = prediction.result
+        if not result or not result.question_text or not result.correct_answer:
+            return 0.0
+
+        try:
+            choices_str = _choices_to_str(result.choices)
+            with dspy.context(lm=get_evaluation_lm()):
+                score_result = self.scorer(
+                    question_text=result.question_text,
+                    choices=choices_str,
+                    correct_answer=result.correct_answer,
+                    grade_level=str(getattr(example, "grade_level", "")),
+                    difficulty=int(getattr(example, "difficulty", 3)),
+                )
+                return int(score_result.overall_score) / 5.0
+        except Exception as e:
+            logger.warning("Reward scoring failed: %s", e)
+            return 0.5  # Neutral score — don't reject candidates on scorer failure
 
     def forward(self, grade_level, question_type, topic, difficulty, grade_description, type_instruction):
-        # Phase 1: Generate candidates using generation model (GPT-5.2)
         gen_lm = get_generation_lm()
-        candidates = []
 
-        with dspy.context(lm=gen_lm):
-            for _ in range(self.best_of_n):
-                try:
+        # Phase 1: Generate with dspy.Refine (feedback-based refinement)
+        gen_result = None
+        try:
+            with dspy.context(lm=gen_lm):
+                gen_result = self.refine(
+                    grade_level=grade_level,
+                    question_type=question_type,
+                    topic=topic,
+                    difficulty=difficulty,
+                    grade_description=grade_description,
+                    type_instruction=type_instruction,
+                )
+        except Exception as e:
+            logger.error("Primary generation pipeline failed: %s", e)
+            # Layer 2: Fallback to single attempt with fallback model
+            try:
+                with dspy.context(lm=get_fallback_lm()):
                     gen_result = self.generator(
                         grade_level=grade_level,
                         question_type=question_type,
@@ -192,75 +287,63 @@ class ExamPipeline(dspy.Module):
                         grade_description=grade_description,
                         type_instruction=type_instruction,
                     )
-                    candidates.append(gen_result.question_json)
-                except Exception as e:
-                    logger.warning("Question generation attempt failed: %s", e)
-                    continue
+            except Exception as fallback_err:
+                logger.error("Fallback generation also failed: %s", fallback_err)
+                return dspy.Prediction(best_question=None, score=0, verified=False)
 
-        if not candidates:
+        question = gen_result.result  # ExamQuestionOutput
+        if not question or not question.question_text:
             return dspy.Prediction(best_question=None, score=0, verified=False)
 
-        # Phase 2 & 3: Verify and Score using evaluation model (Claude 4.6)
+        # Phase 2: Verify answer correctness (evaluation model)
+        verified = True
         eval_lm = get_evaluation_lm()
-        best_question = None
-        best_score = -1
+        choices_str = _choices_to_str(question.choices)
 
-        with dspy.context(lm=eval_lm):
-            for candidate_json in candidates:
-                try:
-                    q = json.loads(candidate_json)
-                except (json.JSONDecodeError, TypeError):
-                    continue
-
-                # Phase 2: Verify answer correctness
-                try:
-                    verify_result = self.verifier(
-                        question_text=q.get("question_text", ""),
-                        choices=json.dumps(q.get("choices") or "null", ensure_ascii=False),
-                        passage=q.get("passage") or "none",
-                        provided_answer=q.get("correct_answer", ""),
+        try:
+            with dspy.context(lm=eval_lm):
+                verify_result = self.verifier(
+                    question_text=question.question_text,
+                    choices=choices_str,
+                    passage=question.passage or "none",
+                    provided_answer=question.correct_answer,
+                )
+                if not verify_result.is_correct:
+                    logger.info(
+                        "Answer corrected: '%s' -> '%s'",
+                        question.correct_answer,
+                        verify_result.correct_answer,
                     )
-
-                    if not verify_result.is_correct:
-                        # Correct the answer using verifier's finding
-                        q["correct_answer"] = verify_result.correct_answer
-                        q["explanation"] = verify_result.reasoning
-                except Exception as e:
-                    logger.warning("Answer verification failed for candidate: %s", e)
-                    q["verified"] = False
-
-                # Phase 3: Score quality
-                overall = 3
-                try:
-                    score_result = self.scorer(
-                        question_text=q.get("question_text", ""),
-                        choices=json.dumps(q.get("choices") or "null", ensure_ascii=False),
-                        correct_answer=q.get("correct_answer", ""),
-                        grade_level=grade_level,
-                        difficulty=difficulty,
+                    question = question.model_copy(
+                        update={
+                            "correct_answer": verify_result.correct_answer,
+                            "explanation": verify_result.reasoning,
+                        }
                     )
-                    overall = int(score_result.overall_score)
-                except (Exception, ValueError) as e:
-                    logger.warning("Quality scoring failed for candidate: %s", e)
-                    overall = 3
+        except Exception as e:
+            logger.warning("Answer verification failed: %s", e)
+            verified = False
 
-                # Only accept questions above quality threshold
-                if overall >= self.quality_threshold and overall > best_score:
-                    best_score = overall
-                    best_question = q
-
-        # If all candidates below threshold, return the best we have anyway
-        if best_question is None and candidates:
-            try:
-                best_question = json.loads(candidates[0])
-                best_score = 2
-            except (json.JSONDecodeError, TypeError):
-                pass
+        # Phase 3: Final quality scoring (evaluation model)
+        overall = 3
+        try:
+            choices_str = _choices_to_str(question.choices)
+            with dspy.context(lm=eval_lm):
+                score_result = self.scorer(
+                    question_text=question.question_text,
+                    choices=choices_str,
+                    correct_answer=question.correct_answer,
+                    grade_level=grade_level,
+                    difficulty=difficulty,
+                )
+                overall = int(score_result.overall_score)
+        except Exception as e:
+            logger.warning("Quality scoring failed: %s", e)
 
         return dspy.Prediction(
-            best_question=json.dumps(best_question, ensure_ascii=False) if best_question else None,
-            score=best_score,
-            verified=True,
+            best_question=question,
+            score=overall,
+            verified=verified,
         )
 
 
@@ -271,26 +354,30 @@ class ExamPipeline(dspy.Module):
 def question_quality_metric(example, prediction, trace=None):
     """Metric for MIPROv2/GEPA optimization.
     Returns a dict with 'score' (0.0-1.0) and 'feedback' string.
-    MIPROv2 reads the 'score' key; GEPA also uses 'feedback' for reflective optimization."""
-    if not prediction.best_question:
+    MIPROv2 reads the 'score' key; GEPA also uses 'feedback' for reflective optimization.
+    """
+    question = prediction.best_question
+    if not question:
         return {"score": 0.0, "feedback": "No question generated"}
 
-    try:
-        q = json.loads(prediction.best_question)
-    except (json.JSONDecodeError, TypeError):
-        return {"score": 0.0, "feedback": "Invalid JSON output from pipeline"}
+    if not isinstance(question, ExamQuestionOutput):
+        return {"score": 0.0, "feedback": f"Unexpected output type: {type(question).__name__}"}
+
+    question_text = question.question_text
+    correct_answer = question.correct_answer
+    explanation = question.explanation
 
     score = 0.0
     issues = []
 
     # Has required fields
-    if q.get("question_text") and q.get("correct_answer"):
+    if question_text and correct_answer:
         score += 0.3
     else:
         issues.append("Missing required fields (question_text or correct_answer)")
 
     # Has explanation
-    if q.get("explanation"):
+    if explanation:
         score += 0.1
     else:
         issues.append("Missing explanation field")

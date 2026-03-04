@@ -15,6 +15,7 @@ import dspy
 from app.core.config import settings
 from app.services.dspy_modules import (
     ExamPipeline,
+    ExamQuestionOutput,
     create_mipro_optimizer,
     get_generation_lm,
 )
@@ -29,9 +30,13 @@ def build_training_example(
     difficulty: int,
     grade_description: str,
     type_instruction: str,
-    expected_question_json: str,
+    expected_question: ExamQuestionOutput,
 ) -> dspy.Example:
-    """Create a DSPy Example from a verified question for MIPROv2 training."""
+    """Create a DSPy Example from a verified question for MIPROv2 training.
+
+    Args:
+        expected_question: Structured ExamQuestionOutput (not a raw JSON string).
+    """
     return dspy.Example(
         grade_level=grade_level,
         question_type=question_type,
@@ -39,8 +44,8 @@ def build_training_example(
         difficulty=difficulty,
         grade_description=grade_description,
         type_instruction=type_instruction,
-        best_question=expected_question_json,
-        score=9,
+        best_question=expected_question,
+        score=5,
         verified=True,
     ).with_inputs(
         "grade_level", "question_type", "topic", "difficulty",
@@ -63,7 +68,7 @@ def optimize_pipeline(
     Returns:
         Optimized ExamPipeline module
     """
-    dspy.configure(lm=get_generation_lm())
+    dspy.configure(lm=get_generation_lm(), adapter=dspy.JSONAdapter())
 
     student = ExamPipeline(best_of_n=settings.best_of_n)
     optimizer = create_mipro_optimizer()

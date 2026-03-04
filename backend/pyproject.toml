@@ -53,3 +53,8 @@ ignore = ["B008"]
 [tool.ruff.lint.per-file-ignores]
 "app/services/dspy_modules.py" = ["E501"]
 "app/services/quality_filter.py" = ["E501"]
+
+[dependency-groups]
+dev = [
+    "pytest-asyncio>=1.3.0",
+]

@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     # Model configuration (PDF spec 2026 models, LiteLLM format)
     generation_model: str = "openai/gpt-5.2"  # Main generation (reasoning model)
     evaluation_model: str = "anthropic/claude-sonnet-4-6"  # Evaluation & scoring
+    fallback_model: str = "anthropic/claude-sonnet-4-6"  # Fallback when generation fails
     multimodal_model: str = "gemini/gemini-3.1-pro"  # Long context / multimodal
 
     # DSPy settings

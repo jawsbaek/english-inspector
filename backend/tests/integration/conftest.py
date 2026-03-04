@@ -36,4 +36,6 @@ def evaluation_lm(require_api_keys):
 def pipeline():
     from app.services.dspy_modules import ExamPipeline
 
+    # Configure JSONAdapter for structured Pydantic output
+    dspy.configure(adapter=dspy.JSONAdapter())
     return ExamPipeline(best_of_n=3)

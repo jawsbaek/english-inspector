@@ -15,6 +15,7 @@ import pytest
 
 from app.models.question import GradeLevel, QuestionType
 from app.schemas.question import ChoiceItem, QuestionResponse
+from app.services.dspy_modules import ExamQuestionOutput
 from app.services.quality_filter import QualityFilter
 
 
@@ -47,7 +48,7 @@ def test_evaluation_lm_connection(require_api_keys, evaluation_lm):
 
 @pytest.mark.integration
 def test_single_question_generation(require_api_keys, pipeline):
-    """Pipeline generates a valid multiple-choice question for middle grade."""
+    """Pipeline generates a valid question via dspy.Refine with structured output."""
     from app.services.generator import GRADE_DESCRIPTIONS, QUESTION_TYPE_INSTRUCTIONS
 
     result = pipeline(
@@ -60,9 +61,12 @@ def test_single_question_generation(require_api_keys, pipeline):
     )
 
     assert result.best_question is not None, "Pipeline returned no question"
-    q = json.loads(result.best_question)
-    assert q.get("question_text"), "Generated question has no question_text"
-    assert q.get("correct_answer"), "Generated question has no correct_answer"
+    question = result.best_question
+    assert isinstance(question, ExamQuestionOutput), (
+        f"Expected ExamQuestionOutput, got {type(question).__name__}"
+    )
+    assert question.question_text, "Generated question has no question_text"
+    assert question.correct_answer, "Generated question has no correct_answer"
 
 
 @pytest.mark.integration
@@ -80,29 +84,26 @@ def test_quality_filter_on_generated(require_api_keys, pipeline):
     )
 
     assert result.best_question is not None, "Pipeline returned no question"
-    q = json.loads(result.best_question)
+    question = result.best_question  # ExamQuestionOutput
 
     choices = None
-    if q.get("choices") and isinstance(q["choices"], list):
-        try:
-            choices = [ChoiceItem(label=c["label"], text=c["text"]) for c in q["choices"]]
-        except (KeyError, TypeError):
-            pass
+    if question.choices:
+        choices = [ChoiceItem(label=c.label, text=c.text) for c in question.choices]
 
-    question = QuestionResponse(
+    qr = QuestionResponse(
         grade_level=GradeLevel.MIDDLE,
         question_type=QuestionType.MULTIPLE_CHOICE,
         topic="school",
         difficulty=3,
-        question_text=q.get("question_text", ""),
+        question_text=question.question_text,
         choices=choices,
-        correct_answer=q.get("correct_answer", ""),
-        explanation=q.get("explanation"),
-        passage=q.get("passage"),
+        correct_answer=question.correct_answer,
+        explanation=question.explanation,
+        passage=question.passage,
     )
 
     qf = QualityFilter()
-    report = qf.filter([question])
+    report = qf.filter([qr])
     assert report.total == 1, "Quality filter should process exactly 1 question"
 
 
