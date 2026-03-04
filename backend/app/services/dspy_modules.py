@@ -77,7 +77,7 @@ class VerifyAnswer(dspy.Signature):
 
     question_text: str = dspy.InputField(desc="The question text")
     choices: str = dspy.InputField(desc="The answer choices as JSON string, or 'null' if no choices")
-    passage: str = dspy.InputField(desc="Reading passage if any, or 'none'")
+    passage: str | None = dspy.InputField(desc="Reading passage for comprehension questions", default=None)
     provided_answer: str = dspy.InputField(desc="The answer claimed to be correct")
 
     is_correct: bool = dspy.OutputField(desc="True if the provided answer is genuinely correct")
@@ -94,6 +94,7 @@ class ScoreQuestion(dspy.Signature):
     question_text: str = dspy.InputField(desc="The question text")
     choices: str = dspy.InputField(desc="Answer choices as JSON or 'null'")
     correct_answer: str = dspy.InputField(desc="The correct answer")
+    passage: str | None = dspy.InputField(desc="Reading passage for comprehension questions", default=None)
     grade_level: str = dspy.InputField(desc="Target grade level")
     difficulty: int = dspy.InputField(desc="Intended difficulty 1-5")
 
@@ -187,11 +188,12 @@ class QuestionScorerModule(dspy.Module):
         super().__init__()
         self.score = dspy.Predict(ScoreQuestion)
 
-    def forward(self, question_text, choices, correct_answer, grade_level, difficulty):
+    def forward(self, question_text, choices, correct_answer, passage, grade_level, difficulty):
         return self.score(
             question_text=question_text,
             choices=choices,
             correct_answer=correct_answer,
+            passage=passage,
             grade_level=grade_level,
             difficulty=difficulty,
         )
@@ -256,7 +258,7 @@ class ExamPipeline(dspy.Module):
                 verify_result = self.verifier(
                     question_text=result.question_text,
                     choices=choices_str,
-                    passage=result.passage or "none",
+                    passage=result.passage,
                     provided_answer=result.correct_answer,
                 )
                 if not verify_result.is_correct:
@@ -272,6 +274,7 @@ class ExamPipeline(dspy.Module):
                     question_text=result.question_text,
                     choices=choices_str,
                     correct_answer=result.correct_answer,
+                    passage=result.passage,
                     grade_level=str(getattr(example, "grade_level", "")),
                     difficulty=int(getattr(example, "difficulty", 3)),
                 )
@@ -333,7 +336,7 @@ class ExamPipeline(dspy.Module):
                     verify_result = self.verifier(
                         question_text=question.question_text,
                         choices=choices_str,
-                        passage=question.passage or "none",
+                        passage=question.passage,
                         provided_answer=question.correct_answer,
                     )
                     if not verify_result.is_correct:
@@ -360,6 +363,7 @@ class ExamPipeline(dspy.Module):
                         question_text=question.question_text,
                         choices=choices_str,
                         correct_answer=question.correct_answer,
+                        passage=question.passage,
                         grade_level=grade_level,
                         difficulty=difficulty,
                     )
