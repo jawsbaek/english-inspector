@@ -67,7 +67,10 @@ def _get_pipeline() -> ExamPipeline:
     optimized = load_optimized_pipeline()
     if optimized:
         return optimized
-    return ExamPipeline(best_of_n=settings.best_of_n)
+    return ExamPipeline(
+        best_of_n=settings.best_of_n,
+        quality_threshold=settings.quality_threshold,
+    )
 
 
 def _generate_single_question(
@@ -122,13 +125,14 @@ async def generate_questions(
     count: int,
     difficulty: int,
 ) -> tuple[list[QuestionResponse], str]:
-    """Generate exam questions using DSPy 3.0+ pipeline with Best-of-N sampling.
+    """Generate exam questions using DSPy 3.1+ pipeline with dspy.Refine.
 
     Steps:
     1. Load MIPROv2-optimized pipeline if available
     2. Configure default DSPy LM for generation
     3. For each question type, run ExamPipeline concurrently
-       (pipeline internally handles model switching: GPT-5.2 → Claude 4.6)
+       (pipeline uses dspy.Refine with feedback-based refinement;
+        reward function includes both verification and scoring)
     4. Return verified, scored questions
     """
     exam_set_id = str(uuid.uuid4())[:8]

@@ -20,8 +20,7 @@ class Settings(BaseSettings):
     multimodal_model: str = "gemini/gemini-3.1-pro"  # Long context / multimodal
 
     # DSPy settings
-    best_of_n: int = 3  # Best-of-N sampling count
-    max_retries: int = 2  # Retry on verification failure
+    best_of_n: int = 3  # dspy.Refine candidate count
     quality_threshold: int = 3  # Minimum score to pass quality filter (1-5 scale)
 
     # Database

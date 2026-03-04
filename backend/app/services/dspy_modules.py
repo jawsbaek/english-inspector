@@ -230,7 +230,7 @@ class ExamPipeline(dspy.Module):
             N=best_of_n,
             reward_fn=self._quality_reward,
             threshold=quality_threshold / 5.0,
-            fail_count=1,
+            fail_count=2,
         )
 
     def _quality_reward(self, example, prediction, trace=None):
@@ -239,6 +239,9 @@ class ExamPipeline(dspy.Module):
         Called by Refine after each generation attempt. Returns a float 0.0-1.0.
         If the reward exceeds the threshold, the candidate is accepted immediately.
         Otherwise, Refine retries with feedback about why the candidate failed.
+
+        Includes both verification and scoring so that wrong-answer candidates
+        are penalized and Refine retries with feedback rather than accepting them.
         """
         result = prediction.result
         if not result or not result.question_text or not result.correct_answer:
@@ -246,7 +249,25 @@ class ExamPipeline(dspy.Module):
 
         try:
             choices_str = _choices_to_str(result.choices)
-            with dspy.context(lm=get_evaluation_lm()):
+            eval_lm = get_evaluation_lm()
+
+            with dspy.context(lm=eval_lm):
+                # Verify answer correctness first
+                verify_result = self.verifier(
+                    question_text=result.question_text,
+                    choices=choices_str,
+                    passage=result.passage or "none",
+                    provided_answer=result.correct_answer,
+                )
+                if not verify_result.is_correct:
+                    logger.info(
+                        "Reward: answer incorrect ('%s' -> '%s'), penalizing candidate",
+                        result.correct_answer,
+                        verify_result.correct_answer,
+                    )
+                    return 0.1  # Heavily penalize wrong answers
+
+                # Score quality
                 score_result = self.scorer(
                     question_text=result.question_text,
                     choices=choices_str,
@@ -256,14 +277,17 @@ class ExamPipeline(dspy.Module):
                 )
                 return int(score_result.overall_score) / 5.0
         except Exception as e:
-            logger.warning("Reward scoring failed: %s", e)
-            return 0.5  # Neutral score — don't reject candidates on scorer failure
+            logger.warning("Reward evaluation failed: %s", e)
+            return 0.0  # Force retry on evaluation failure
 
     def forward(self, grade_level, question_type, topic, difficulty, grade_description, type_instruction):
         gen_lm = get_generation_lm()
 
         # Phase 1: Generate with dspy.Refine (feedback-based refinement)
+        # Refine's reward function already handles verification and scoring
+        # for each candidate, so we don't need to repeat those steps here.
         gen_result = None
+        used_fallback = False
         try:
             with dspy.context(lm=gen_lm):
                 gen_result = self.refine(
@@ -276,7 +300,7 @@ class ExamPipeline(dspy.Module):
                 )
         except Exception as e:
             logger.error("Primary generation pipeline failed: %s", e)
-            # Layer 2: Fallback to single attempt with fallback model
+            # Fallback to single attempt with fallback model (no Refine)
             try:
                 with dspy.context(lm=get_fallback_lm()):
                     gen_result = self.generator(
@@ -287,6 +311,7 @@ class ExamPipeline(dspy.Module):
                         grade_description=grade_description,
                         type_instruction=type_instruction,
                     )
+                    used_fallback = True
             except Exception as fallback_err:
                 logger.error("Fallback generation also failed: %s", fallback_err)
                 return dspy.Prediction(best_question=None, score=0, verified=False)
@@ -295,50 +320,52 @@ class ExamPipeline(dspy.Module):
         if not question or not question.question_text:
             return dspy.Prediction(best_question=None, score=0, verified=False)
 
-        # Phase 2: Verify answer correctness (evaluation model)
-        verified = True
-        eval_lm = get_evaluation_lm()
-        choices_str = _choices_to_str(question.choices)
+        # Phase 2: Verify + score only for fallback path (Refine path already did this)
+        verified = not used_fallback  # Refine path verified in reward_fn
+        overall = self.quality_threshold  # Default for Refine path
 
-        try:
-            with dspy.context(lm=eval_lm):
-                verify_result = self.verifier(
-                    question_text=question.question_text,
-                    choices=choices_str,
-                    passage=question.passage or "none",
-                    provided_answer=question.correct_answer,
-                )
-                if not verify_result.is_correct:
-                    logger.info(
-                        "Answer corrected: '%s' -> '%s'",
-                        question.correct_answer,
-                        verify_result.correct_answer,
-                    )
-                    question = question.model_copy(
-                        update={
-                            "correct_answer": verify_result.correct_answer,
-                            "explanation": verify_result.reasoning,
-                        }
-                    )
-        except Exception as e:
-            logger.warning("Answer verification failed: %s", e)
-            verified = False
-
-        # Phase 3: Final quality scoring (evaluation model)
-        overall = 3
-        try:
+        if used_fallback:
+            eval_lm = get_evaluation_lm()
             choices_str = _choices_to_str(question.choices)
-            with dspy.context(lm=eval_lm):
-                score_result = self.scorer(
-                    question_text=question.question_text,
-                    choices=choices_str,
-                    correct_answer=question.correct_answer,
-                    grade_level=grade_level,
-                    difficulty=difficulty,
-                )
-                overall = int(score_result.overall_score)
-        except Exception as e:
-            logger.warning("Quality scoring failed: %s", e)
+
+            try:
+                with dspy.context(lm=eval_lm):
+                    verify_result = self.verifier(
+                        question_text=question.question_text,
+                        choices=choices_str,
+                        passage=question.passage or "none",
+                        provided_answer=question.correct_answer,
+                    )
+                    if not verify_result.is_correct:
+                        logger.info(
+                            "Answer corrected: '%s' -> '%s'",
+                            question.correct_answer,
+                            verify_result.correct_answer,
+                        )
+                        question = question.model_copy(
+                            update={
+                                "correct_answer": verify_result.correct_answer,
+                                "explanation": verify_result.reasoning,
+                            }
+                        )
+                    verified = True
+            except Exception as e:
+                logger.warning("Fallback answer verification failed: %s", e)
+                verified = False
+
+            try:
+                choices_str = _choices_to_str(question.choices)
+                with dspy.context(lm=eval_lm):
+                    score_result = self.scorer(
+                        question_text=question.question_text,
+                        choices=choices_str,
+                        correct_answer=question.correct_answer,
+                        grade_level=grade_level,
+                        difficulty=difficulty,
+                    )
+                    overall = int(score_result.overall_score)
+            except Exception as e:
+                logger.warning("Fallback quality scoring failed: %s", e)
 
         return dspy.Prediction(
             best_question=question,
