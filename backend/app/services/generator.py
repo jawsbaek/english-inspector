@@ -1,14 +1,13 @@
-"""Question generation service using DSPy 3.0+ pipeline.
+"""Question generation service using DSPy 3.1+ pipeline.
 
 Pipeline stages:
 1. Load optimized pipeline (MIPROv2) if available, else use default
-2. DSPy ExamPipeline (Generate → Verify → Score) with Best-of-N sampling
+2. DSPy ExamPipeline with dspy.Refine (feedback-based generation refinement)
 3. Multi-model routing: GPT-5.2 for generation, Claude 4.6 for evaluation
-4. Results parsed and returned as QuestionResponse objects
+4. Structured Pydantic output via dspy.JSONAdapter — no manual JSON parsing
 """
 
 import asyncio
-import json
 import uuid
 from functools import partial
 
@@ -17,7 +16,7 @@ import dspy
 from app.core.config import settings
 from app.models.question import GradeLevel, QuestionType
 from app.schemas.question import ChoiceItem, QuestionResponse
-from app.services.dspy_modules import ExamPipeline, get_generation_lm
+from app.services.dspy_modules import ExamPipeline, ExamQuestionOutput, get_generation_lm
 from app.services.optimizer import load_optimized_pipeline
 
 GRADE_DESCRIPTIONS = {
@@ -78,7 +77,11 @@ def _generate_single_question(
     topic: str,
     difficulty: int,
 ) -> QuestionResponse | None:
-    """Generate and verify a single question through the DSPy pipeline."""
+    """Generate and verify a single question through the DSPy pipeline.
+
+    The pipeline returns an ExamQuestionOutput (Pydantic model) via dspy.JSONAdapter,
+    so no manual JSON parsing is needed.
+    """
     grade_desc = GRADE_DESCRIPTIONS[grade_level]
     type_inst = QUESTION_TYPE_INSTRUCTIONS[question_type]
 
@@ -91,31 +94,24 @@ def _generate_single_question(
         type_instruction=type_inst,
     )
 
-    if not result.best_question:
-        return None
-
-    try:
-        q = json.loads(result.best_question)
-    except (json.JSONDecodeError, TypeError):
+    question: ExamQuestionOutput | None = result.best_question
+    if not question:
         return None
 
     choices = None
-    if q.get("choices") and isinstance(q["choices"], list):
-        try:
-            choices = [ChoiceItem(label=c["label"], text=c["text"]) for c in q["choices"]]
-        except (KeyError, TypeError):
-            choices = None
+    if question.choices:
+        choices = [ChoiceItem(label=c.label, text=c.text) for c in question.choices]
 
     return QuestionResponse(
         grade_level=grade_level,
         question_type=question_type,
         topic=topic,
         difficulty=difficulty,
-        question_text=q.get("question_text", ""),
+        question_text=question.question_text,
         choices=choices,
-        correct_answer=q.get("correct_answer", ""),
-        explanation=q.get("explanation"),
-        passage=q.get("passage"),
+        correct_answer=question.correct_answer,
+        explanation=question.explanation,
+        passage=question.passage,
     )
 
 
@@ -137,8 +133,8 @@ async def generate_questions(
     """
     exam_set_id = str(uuid.uuid4())[:8]
 
-    # Set default LM for the session
-    dspy.configure(lm=get_generation_lm())
+    # Set default LM and JSONAdapter for structured Pydantic output
+    dspy.configure(lm=get_generation_lm(), adapter=dspy.JSONAdapter())
 
     pipeline = _get_pipeline()
 
