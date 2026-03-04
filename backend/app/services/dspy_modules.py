@@ -287,8 +287,8 @@ class ExamPipeline(dspy.Module):
         gen_lm = get_generation_lm()
 
         # Phase 1: Generate with dspy.Refine (feedback-based refinement)
-        # Refine's reward function already handles verification and scoring
-        # for each candidate, so we don't need to repeat those steps here.
+        # Refine's reward function scores candidates for selection, but the
+        # final verification + answer correction happens in Phase 2 below.
         gen_result = None
         used_fallback = False
         try:
@@ -323,53 +323,55 @@ class ExamPipeline(dspy.Module):
         if not question or not question.question_text:
             return dspy.Prediction(best_question=None, score=0, verified=False)
 
-        # Phase 2: Verify + score only for fallback path (Refine path already did this)
-        verified = not used_fallback  # Refine path verified in reward_fn
-        overall = self.quality_threshold  # Default for Refine path
+        # Phase 2: Verify + score for ALL paths
+        # Even the Refine path needs final verification because Refine may
+        # return a low-reward candidate (e.g. wrong answer) when all attempts
+        # fail to meet the threshold. The reward function penalizes but does
+        # not correct answers, so we must do that here.
+        verified = False
+        overall = self.quality_threshold
 
-        if used_fallback:
-            eval_lm = get_evaluation_lm()
+        eval_lm = get_evaluation_lm()
+        choices_str = _choices_to_str(question.choices)
+
+        try:
+            with dspy.context(lm=eval_lm):
+                verify_result = self.verifier(
+                    question_text=question.question_text,
+                    choices=choices_str,
+                    passage=question.passage,
+                    provided_answer=question.correct_answer,
+                )
+                if not verify_result.is_correct:
+                    logger.info(
+                        "Answer corrected: '%s' -> '%s'",
+                        question.correct_answer,
+                        verify_result.correct_answer,
+                    )
+                    question = question.model_copy(
+                        update={
+                            "correct_answer": verify_result.correct_answer,
+                            "explanation": verify_result.reasoning,
+                        }
+                    )
+                verified = True
+        except Exception as e:
+            logger.warning("Answer verification failed: %s", e)
+
+        try:
             choices_str = _choices_to_str(question.choices)
-
-            try:
-                with dspy.context(lm=eval_lm):
-                    verify_result = self.verifier(
-                        question_text=question.question_text,
-                        choices=choices_str,
-                        passage=question.passage,
-                        provided_answer=question.correct_answer,
-                    )
-                    if not verify_result.is_correct:
-                        logger.info(
-                            "Answer corrected: '%s' -> '%s'",
-                            question.correct_answer,
-                            verify_result.correct_answer,
-                        )
-                        question = question.model_copy(
-                            update={
-                                "correct_answer": verify_result.correct_answer,
-                                "explanation": verify_result.reasoning,
-                            }
-                        )
-                    verified = True
-            except Exception as e:
-                logger.warning("Fallback answer verification failed: %s", e)
-                verified = False
-
-            try:
-                choices_str = _choices_to_str(question.choices)
-                with dspy.context(lm=eval_lm):
-                    score_result = self.scorer(
-                        question_text=question.question_text,
-                        choices=choices_str,
-                        correct_answer=question.correct_answer,
-                        passage=question.passage,
-                        grade_level=grade_level,
-                        difficulty=difficulty,
-                    )
-                    overall = int(score_result.overall_score)
-            except Exception as e:
-                logger.warning("Fallback quality scoring failed: %s", e)
+            with dspy.context(lm=eval_lm):
+                score_result = self.scorer(
+                    question_text=question.question_text,
+                    choices=choices_str,
+                    correct_answer=question.correct_answer,
+                    passage=question.passage,
+                    grade_level=grade_level,
+                    difficulty=difficulty,
+                )
+                overall = int(score_result.overall_score)
+        except Exception as e:
+            logger.warning("Quality scoring failed: %s", e)
 
         return dspy.Prediction(
             best_question=question,

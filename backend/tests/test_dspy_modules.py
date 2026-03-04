@@ -266,21 +266,33 @@ class TestExamPipelineForward:
             type_instruction="Generate a 4-choice MC question.",
         )
 
+    @patch("app.services.dspy_modules.get_evaluation_lm")
     @patch("app.services.dspy_modules.get_generation_lm")
-    def test_refine_success_path(self, mock_get_lm):
+    def test_refine_success_path(self, mock_get_lm, mock_get_eval_lm):
         mock_get_lm.return_value = MagicMock()
+        mock_get_eval_lm.return_value = MagicMock()
         question = _sample_question()
 
         mock_refine_result = MagicMock()
         mock_refine_result.result = question
         self.pipeline.refine = MagicMock(return_value=mock_refine_result)
 
+        # Mock verifier: answer is correct
+        mock_verify = MagicMock()
+        mock_verify.is_correct = True
+        self.pipeline.verifier = MagicMock(return_value=mock_verify)
+
+        # Mock scorer: overall_score = 4
+        mock_score = MagicMock()
+        mock_score.overall_score = 4
+        self.pipeline.scorer = MagicMock(return_value=mock_score)
+
         with patch("dspy.context"):
             result = self.pipeline.forward(**self.kwargs)
 
         assert result.best_question == question
         assert result.verified is True
-        assert result.score == 3  # quality_threshold default
+        assert result.score == 4
 
     @patch("app.services.dspy_modules.get_generation_lm")
     def test_refine_returns_no_question(self, mock_get_lm):
