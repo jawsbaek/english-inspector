@@ -271,8 +271,17 @@ class TestExamPipelineForward:
         mock_get_lm.return_value = MagicMock()
         question = _sample_question()
 
-        mock_refine_result = MagicMock()
+        # Simulate cached results from reward function
+        mock_verify = MagicMock()
+        mock_verify.is_correct = True
+
+        mock_score = MagicMock()
+        mock_score.overall_score = 4
+
+        mock_refine_result = MagicMock(spec=[])
         mock_refine_result.result = question
+        mock_refine_result._verify_result = mock_verify
+        mock_refine_result._score_result = mock_score
         self.pipeline.refine = MagicMock(return_value=mock_refine_result)
 
         with patch("dspy.context"):
@@ -280,7 +289,7 @@ class TestExamPipelineForward:
 
         assert result.best_question == question
         assert result.verified is True
-        assert result.score == 3  # quality_threshold default
+        assert result.score == 4
 
     @patch("app.services.dspy_modules.get_generation_lm")
     def test_refine_returns_no_question(self, mock_get_lm):
@@ -307,9 +316,9 @@ class TestExamPipelineForward:
         # Refine raises
         self.pipeline.refine = MagicMock(side_effect=RuntimeError("Refine failed"))
 
-        # Fallback generator returns valid question
+        # Fallback generator returns valid question (no cached results)
         question = _sample_question()
-        mock_gen_result = MagicMock()
+        mock_gen_result = MagicMock(spec=[])
         mock_gen_result.result = question
         self.pipeline.generator = MagicMock(return_value=mock_gen_result)
 
@@ -357,7 +366,7 @@ class TestExamPipelineForward:
         self.pipeline.refine = MagicMock(side_effect=RuntimeError("Refine failed"))
 
         question = _sample_question(correct_answer="B")
-        mock_gen_result = MagicMock()
+        mock_gen_result = MagicMock(spec=[])
         mock_gen_result.result = question
         self.pipeline.generator = MagicMock(return_value=mock_gen_result)
 

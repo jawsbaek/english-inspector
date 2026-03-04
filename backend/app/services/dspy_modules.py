@@ -77,7 +77,7 @@ class VerifyAnswer(dspy.Signature):
 
     question_text: str = dspy.InputField(desc="The question text")
     choices: str = dspy.InputField(desc="The answer choices as JSON string, or 'null' if no choices")
-    passage: str = dspy.InputField(desc="Reading passage if any, or 'none'")
+    passage: str | None = dspy.InputField(desc="Reading passage for comprehension questions", default=None)
     provided_answer: str = dspy.InputField(desc="The answer claimed to be correct")
 
     is_correct: bool = dspy.OutputField(desc="True if the provided answer is genuinely correct")
@@ -94,6 +94,7 @@ class ScoreQuestion(dspy.Signature):
     question_text: str = dspy.InputField(desc="The question text")
     choices: str = dspy.InputField(desc="Answer choices as JSON or 'null'")
     correct_answer: str = dspy.InputField(desc="The correct answer")
+    passage: str | None = dspy.InputField(desc="Reading passage for comprehension questions", default=None)
     grade_level: str = dspy.InputField(desc="Target grade level")
     difficulty: int = dspy.InputField(desc="Intended difficulty 1-5")
 
@@ -187,11 +188,12 @@ class QuestionScorerModule(dspy.Module):
         super().__init__()
         self.score = dspy.Predict(ScoreQuestion)
 
-    def forward(self, question_text, choices, correct_answer, grade_level, difficulty):
+    def forward(self, question_text, choices, correct_answer, passage, grade_level, difficulty):
         return self.score(
             question_text=question_text,
             choices=choices,
             correct_answer=correct_answer,
+            passage=passage,
             grade_level=grade_level,
             difficulty=difficulty,
         )
@@ -240,8 +242,8 @@ class ExamPipeline(dspy.Module):
         If the reward exceeds the threshold, the candidate is accepted immediately.
         Otherwise, Refine retries with feedback about why the candidate failed.
 
-        Includes both verification and scoring so that wrong-answer candidates
-        are penalized and Refine retries with feedback rather than accepting them.
+        Caches verify/score results on the prediction object so that forward()
+        can reuse them instead of making redundant LLM calls.
         """
         result = prediction.result
         if not result or not result.question_text or not result.correct_answer:
@@ -256,9 +258,12 @@ class ExamPipeline(dspy.Module):
                 verify_result = self.verifier(
                     question_text=result.question_text,
                     choices=choices_str,
-                    passage=result.passage or "none",
+                    passage=result.passage,
                     provided_answer=result.correct_answer,
                 )
+                # Cache on prediction for reuse in forward()
+                prediction._verify_result = verify_result
+
                 if not verify_result.is_correct:
                     logger.info(
                         "Reward: answer incorrect ('%s' -> '%s'), penalizing candidate",
@@ -272,9 +277,12 @@ class ExamPipeline(dspy.Module):
                     question_text=result.question_text,
                     choices=choices_str,
                     correct_answer=result.correct_answer,
+                    passage=result.passage,
                     grade_level=str(getattr(example, "grade_level", "")),
                     difficulty=int(getattr(example, "difficulty", 3)),
                 )
+                prediction._score_result = score_result
+
                 return int(score_result.overall_score) / 5.0
         except Exception as e:
             logger.warning("Reward evaluation failed: %s", e)
@@ -284,8 +292,8 @@ class ExamPipeline(dspy.Module):
         gen_lm = get_generation_lm()
 
         # Phase 1: Generate with dspy.Refine (feedback-based refinement)
-        # Refine's reward function already handles verification and scoring
-        # for each candidate, so we don't need to repeat those steps here.
+        # Refine's reward function scores candidates for selection, but the
+        # final verification + answer correction happens in Phase 2 below.
         gen_result = None
         used_fallback = False
         try:
@@ -320,52 +328,73 @@ class ExamPipeline(dspy.Module):
         if not question or not question.question_text:
             return dspy.Prediction(best_question=None, score=0, verified=False)
 
-        # Phase 2: Verify + score only for fallback path (Refine path already did this)
-        verified = not used_fallback  # Refine path verified in reward_fn
-        overall = self.quality_threshold  # Default for Refine path
+        # Phase 2: Verify + score
+        # Reuse cached results from reward function when available (Refine path),
+        # otherwise call verifier/scorer directly (fallback path).
+        cached_verify = getattr(gen_result, "_verify_result", None)
+        cached_score = getattr(gen_result, "_score_result", None)
 
-        if used_fallback:
+        verified = False
+        overall = self.quality_threshold
+
+        if cached_verify:
+            verify_result = cached_verify
+        else:
             eval_lm = get_evaluation_lm()
             choices_str = _choices_to_str(question.choices)
-
             try:
                 with dspy.context(lm=eval_lm):
                     verify_result = self.verifier(
                         question_text=question.question_text,
                         choices=choices_str,
-                        passage=question.passage or "none",
+                        passage=question.passage,
                         provided_answer=question.correct_answer,
                     )
-                    if not verify_result.is_correct:
-                        logger.info(
-                            "Answer corrected: '%s' -> '%s'",
-                            question.correct_answer,
-                            verify_result.correct_answer,
-                        )
-                        question = question.model_copy(
-                            update={
-                                "correct_answer": verify_result.correct_answer,
-                                "explanation": verify_result.reasoning,
-                            }
-                        )
-                    verified = True
             except Exception as e:
-                logger.warning("Fallback answer verification failed: %s", e)
-                verified = False
+                logger.warning("Answer verification failed: %s", e)
+                verify_result = None
 
+        if verify_result:
+            if not verify_result.is_correct:
+                logger.info(
+                    "Answer corrected: '%s' -> '%s'",
+                    question.correct_answer,
+                    verify_result.correct_answer,
+                )
+                question = question.model_copy(
+                    update={
+                        "correct_answer": verify_result.correct_answer,
+                        "explanation": verify_result.reasoning,
+                    }
+                )
+            verified = True
+
+        if cached_score:
+            overall = int(cached_score.overall_score)
+        else:
+            eval_lm = get_evaluation_lm()
+            choices_str = _choices_to_str(question.choices)
             try:
-                choices_str = _choices_to_str(question.choices)
                 with dspy.context(lm=eval_lm):
                     score_result = self.scorer(
                         question_text=question.question_text,
                         choices=choices_str,
                         correct_answer=question.correct_answer,
+                        passage=question.passage,
                         grade_level=grade_level,
                         difficulty=difficulty,
                     )
                     overall = int(score_result.overall_score)
             except Exception as e:
-                logger.warning("Fallback quality scoring failed: %s", e)
+                logger.warning("Quality scoring failed: %s", e)
+
+        # Reject questions that don't meet the quality threshold
+        if overall < self.quality_threshold:
+            logger.warning(
+                "Question rejected: score %d < threshold %d",
+                overall, self.quality_threshold,
+            )
+            return dspy.Prediction(best_question=None, score=overall, verified=verified)
 
         return dspy.Prediction(
             best_question=question,
