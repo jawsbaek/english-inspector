@@ -355,28 +355,17 @@ def question_quality_metric(example, prediction, trace=None):
     """Metric for MIPROv2/GEPA optimization.
     Returns a dict with 'score' (0.0-1.0) and 'feedback' string.
     MIPROv2 reads the 'score' key; GEPA also uses 'feedback' for reflective optimization.
-
-    Handles both ExamQuestionOutput (new) and legacy JSON string (backward compat).
     """
     question = prediction.best_question
     if not question:
         return {"score": 0.0, "feedback": "No question generated"}
 
-    # Extract fields — handle both structured and legacy formats
-    if isinstance(question, str):
-        try:
-            q = json.loads(question)
-            question_text = q.get("question_text", "")
-            correct_answer = q.get("correct_answer", "")
-            explanation = q.get("explanation", "")
-        except (json.JSONDecodeError, TypeError):
-            return {"score": 0.0, "feedback": "Invalid JSON output from pipeline"}
-    elif isinstance(question, ExamQuestionOutput):
-        question_text = question.question_text
-        correct_answer = question.correct_answer
-        explanation = question.explanation
-    else:
+    if not isinstance(question, ExamQuestionOutput):
         return {"score": 0.0, "feedback": f"Unexpected output type: {type(question).__name__}"}
+
+    question_text = question.question_text
+    correct_answer = question.correct_answer
+    explanation = question.explanation
 
     score = 0.0
     issues = []
