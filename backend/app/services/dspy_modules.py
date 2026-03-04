@@ -373,6 +373,14 @@ class ExamPipeline(dspy.Module):
         except Exception as e:
             logger.warning("Quality scoring failed: %s", e)
 
+        # Reject questions that don't meet the quality threshold
+        if overall < self.quality_threshold:
+            logger.warning(
+                "Question rejected: score %d < threshold %d",
+                overall, self.quality_threshold,
+            )
+            return dspy.Prediction(best_question=None, score=overall, verified=verified)
+
         return dspy.Prediction(
             best_question=question,
             score=overall,
